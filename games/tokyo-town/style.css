@@ -494,3 +494,32 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- ゲーム一覧へ戻るリンク（ミニゲーム集サイト共通） ---------- */
+
+.game-back {
+  margin-bottom: 8px;
+}
+
+.game-back a {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* 質問中・診断中は集中できるよう隠す */
+.app:has(#screen-question.is-active) .game-back,
+.app:has(#screen-loading.is-active) .game-back {
+  display: none;
+}
+
+a.btn {
+  text-align: center;
+  text-decoration: none;
+}

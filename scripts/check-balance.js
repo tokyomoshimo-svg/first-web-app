@@ -9,7 +9,7 @@ const vm = require("vm");
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(
-  fs.readFileSync(path.join(__dirname, "..", "data.js"), "utf8") + ";this.TOWNS = TOWNS; this.QUESTIONS = QUESTIONS;",
+  fs.readFileSync(path.join(__dirname, "..", "games", "tokyo-town", "data.js"), "utf8") + ";this.TOWNS = TOWNS; this.QUESTIONS = QUESTIONS;",
   ctx
 );
 const { TOWNS, QUESTIONS } = ctx;

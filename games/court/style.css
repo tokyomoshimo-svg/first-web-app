@@ -1,0 +1,440 @@
+/* どうでもいい裁判所 */
+
+:root {
+  --court: #2f3e6b;
+  --court-dark: #1f2a4a;
+  --gold: #c9a227;
+  --paper: #fffdf6;
+  --stamp: #d62828;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+}
+
+.screen {
+  display: none;
+}
+
+.screen.is-active {
+  display: block;
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.btn-court {
+  background: var(--court);
+  color: #fff;
+  box-shadow: 0 6px 0 var(--court-dark), 0 10px 20px rgba(47, 62, 107, 0.3);
+}
+
+.btn-court:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 var(--court-dark), 0 4px 10px rgba(47, 62, 107, 0.3);
+}
+
+/* ---------- 入力画面 ---------- */
+
+.court-hero {
+  text-align: center;
+  padding: 8px 0 20px;
+}
+
+.court-emblem {
+  display: inline-grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  font-size: 2.4rem;
+  background: var(--court);
+  border: 3px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+}
+
+.court-title {
+  margin: 12px 0 4px;
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 8vw, 2.1rem);
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  color: var(--court-dark);
+}
+
+.court-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.case-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  box-shadow: var(--shadow);
+  border-top: 6px solid var(--court);
+}
+
+.case-label {
+  display: block;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.case-text {
+  display: block;
+  width: 100%;
+  min-height: 112px;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  font-size: 1rem; /* 16px未満だとiPhoneで自動ズームするため */
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.case-text:focus {
+  outline: none;
+  border-color: var(--court);
+  background: #fff;
+}
+
+.case-card.is-error .case-text {
+  border-color: var(--stamp);
+  animation: shake 0.35s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.case-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  min-height: 1.4em;
+}
+
+.case-error {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--stamp);
+}
+
+.case-count {
+  margin: 0 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.examples-label {
+  margin: 12px 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.examples {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.example {
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.example:active {
+  transform: scale(0.96);
+  border-color: var(--court);
+}
+
+/* ---------- 審理中 ---------- */
+
+.loading {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.loading-gavel {
+  font-size: 4rem;
+  transform-origin: 80% 80%;
+  animation: gavel 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes gavel {
+  from { transform: rotate(-35deg); }
+  to { transform: rotate(10deg); }
+}
+
+.loading-title {
+  margin: 16px 0 0;
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--court-dark);
+}
+
+.loading-text {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* ---------- 判決 ---------- */
+
+.verdict-card {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid #e8dfc8;
+  border-radius: 6px;
+  padding: 24px 18px 20px;
+  box-shadow: var(--shadow);
+  font-family: var(--serif);
+  color: var(--court-dark);
+}
+
+.verdict-card::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid #eadfbf;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.verdict-card.pop-in {
+  animation: pop-in 0.45s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.verdict-head {
+  text-align: center;
+}
+
+.verdict-caseno {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.verdict-title {
+  margin: 4px 0 16px;
+  font-size: 1.8rem;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+}
+
+.verdict-facts {
+  margin: 0;
+  border-top: 1px solid #e8dfc8;
+}
+
+.verdict-facts > div {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8dfc8;
+}
+
+.verdict-facts dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding-top: 2px;
+}
+
+.verdict-facts dd {
+  margin: 0;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.verdict-stamp-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0 8px;
+}
+
+.verdict-stamp {
+  margin: 0;
+  padding: 8px 20px;
+  border: 4px double var(--stamp-color, var(--stamp));
+  border-radius: 10px;
+  color: var(--stamp-color, var(--stamp));
+  font-size: clamp(1.6rem, 9vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-align: center;
+  transform: rotate(-6deg);
+}
+
+.verdict-stamp.stamp-in {
+  animation: stamp 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) 0.15s both;
+}
+
+@keyframes stamp {
+  from { opacity: 0; transform: rotate(-6deg) scale(2.2); }
+  to { opacity: 1; transform: rotate(-6deg) scale(1); }
+}
+
+.tone-innocent { --stamp-color: #2a9d5c; --meter: #2a9d5c; }
+.tone-mercy { --stamp-color: #3a86c8; --meter: #3a86c8; }
+.tone-probation { --stamp-color: #d68a00; --meter: #e09f1f; }
+.tone-guilty { --stamp-color: #d62828; --meter: #e04848; }
+.tone-heavy { --stamp-color: #a4161a; --meter: #a4161a; }
+
+.guilt {
+  margin-top: 16px;
+  font-family: var(--font);
+}
+
+.guilt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.guilt-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--meter, var(--stamp));
+}
+
+.guilt-bar {
+  height: 12px;
+  margin-top: 4px;
+  background: #ece5d3;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.guilt-fill {
+  height: 100%;
+  width: 0;
+  background: var(--meter, var(--stamp));
+  border-radius: 999px;
+  transition: width 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.guilt-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.verdict-block {
+  margin-top: 20px;
+}
+
+.verdict-block h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  padding-left: 8px;
+  border-left: 4px solid var(--gold);
+}
+
+.verdict-block p {
+  margin: 0;
+  line-height: 1.8;
+}
+
+.verdict-reasons {
+  margin: 0;
+  padding-left: 1.4em;
+  line-height: 1.8;
+}
+
+.verdict-reasons li + li {
+  margin-top: 4px;
+}
+
+.judge-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 24px;
+  font-family: var(--font);
+}
+
+.judge-face {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  background: var(--court);
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+}
+
+.judge-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  border: 2px solid var(--court);
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+.judge-bubble::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: 16px;
+  border: 8px solid transparent;
+  border-right-color: var(--court);
+  border-left: 0;
+}
+
+.judge-name {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.judge-bubble p:last-child {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}

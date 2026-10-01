@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f3e6b">
+  <meta name="description" content="日常のどうでもいい事件を入力すると、架空の裁判所が勝手に判決を出してくれるミニゲーム。">
+  <title>どうでもいい裁判所｜ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+  <link rel="stylesheet" href="../../assets/common.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <nav class="site-nav" aria-label="サイト">
+      <a href="../../">← ちょっと暇つぶし。</a>
+    </nav>
+
+    <!-- 入力画面 -->
+    <section id="screen-input" class="screen is-active" aria-labelledby="court-title">
+      <header class="court-hero">
+        <div class="court-emblem" aria-hidden="true">⚖️</div>
+        <h1 id="court-title" class="court-title">どうでもいい裁判所</h1>
+        <p class="court-sub">日常のどうでもいい事件、<br>勝手に裁きます。</p>
+      </header>
+
+      <form id="case-form" class="case-card" novalidate>
+        <label for="case-text" class="case-label">あなたの事件を入力してください</label>
+        <textarea id="case-text" class="case-text" rows="4" maxlength="200"
+          placeholder="例：最後のプリンを食べた"></textarea>
+        <div class="case-meta">
+          <p id="case-error" class="case-error" role="alert"></p>
+          <p class="case-count"><span id="case-count">0</span> / 200</p>
+        </div>
+
+        <p class="examples-label">入力例（タップで入力）</p>
+        <ul id="examples" class="examples"></ul>
+
+        <button id="btn-judge" class="btn btn-court" type="submit">🔨 判決を出す</button>
+      </form>
+
+      <p class="disclaimer">※これは完全に架空のエンタメ判決です。実際の法律判断ではありません。</p>
+    </section>
+
+    <!-- 審理中画面 -->
+    <section id="screen-loading" class="screen" aria-live="polite">
+      <div class="loading">
+        <div class="loading-gavel" aria-hidden="true">🔨</div>
+        <p class="loading-title">静粛に！</p>
+        <p class="loading-text">ただいま審理中です…</p>
+      </div>
+    </section>
+
+    <!-- 判決画面 -->
+    <section id="screen-result" class="screen" aria-live="polite">
+      <article id="verdict-card" class="verdict-card">
+        <header class="verdict-head">
+          <p id="v-caseno" class="verdict-caseno"></p>
+          <h2 class="verdict-title">判　決</h2>
+        </header>
+
+        <dl class="verdict-facts">
+          <div><dt>事件名</dt><dd id="v-case"></dd></div>
+          <div><dt>被告</dt><dd id="v-defendant"></dd></div>
+          <div><dt>罪名</dt><dd id="v-crime"></dd></div>
+        </dl>
+
+        <div class="verdict-stamp-wrap">
+          <p id="v-stamp" class="verdict-stamp"></p>
+        </div>
+
+        <div class="guilt">
+          <div class="guilt-head">
+            <span>有罪度</span>
+            <span class="guilt-num"><span id="v-guilt">0</span>%</span>
+          </div>
+          <div class="guilt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="有罪度">
+            <div id="v-guilt-fill" class="guilt-fill"></div>
+          </div>
+          <div class="guilt-scale" aria-hidden="true"><span>無罪</span><span>グレー</span><span>有罪</span></div>
+        </div>
+
+        <section class="verdict-block">
+          <h3>主文</h3>
+          <p id="v-main"></p>
+        </section>
+
+        <section class="verdict-block">
+          <h3>判決理由</h3>
+          <ol id="v-reasons" class="verdict-reasons"></ol>
+        </section>
+
+        <section class="judge-comment">
+          <div class="judge-face" aria-hidden="true">🦉</div>
+          <div class="judge-bubble">
+            <p class="judge-name">裁判長からの一言</p>
+            <p id="v-comment"></p>
+          </div>
+        </section>
+      </article>
+
+      <div class="result-actions">
+        <button id="btn-share" class="btn btn-court" type="button">この判決をシェアする</button>
+        <button id="btn-again" class="btn btn-secondary" type="button">別の事件を裁く</button>
+        <a class="btn btn-secondary" href="../../">ほかのゲームで遊ぶ</a>
+      </div>
+
+      <p class="disclaimer">※これは完全に架空のエンタメ判決です。実際の法律判断ではありません。</p>
+      <p id="share-toast" class="toast" role="status"></p>
+    </section>
+  </main>
+
+  <script src="../../assets/share.js"></script>
+  <script src="rules.js"></script>
+  <script src="judge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

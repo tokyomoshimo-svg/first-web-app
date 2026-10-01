@@ -4,89 +4,82 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ff6b6b">
-  <meta name="description" content="10問の質問に答えて、あなたにぴったりの東京の街を診断します。">
-  <title>東京の街診断</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗼</text></svg>">
-  <link rel="stylesheet" href="style.css">
+  <meta name="description" content="1〜3分で遊べる、くだらないミニゲーム集。">
+  <title>ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+  <link rel="stylesheet" href="assets/common.css">
+  <link rel="stylesheet" href="assets/top.css">
 </head>
 <body>
-  <main class="app">
-    <!-- スタート画面 -->
-    <section id="screen-start" class="screen is-active" aria-labelledby="start-title">
-      <div class="hero">
-        <div class="hero-emoji" aria-hidden="true">🗼</div>
-        <p class="hero-sub">10の質問でわかる</p>
-        <h1 id="start-title" class="hero-title">東京の街診断</h1>
-        <p class="hero-text">
-          あなたの好みや性格から、<br>
-          ぴったりの東京の街を診断します。
-        </p>
-        <ul class="hero-tags" aria-label="特徴">
-          <li>⏱ 約1分</li>
-          <li>📱 全10問</li>
-          <li>🏙 全8タイプ</li>
-        </ul>
-      </div>
-      <button id="btn-start" class="btn btn-primary" type="button">診断をはじめる</button>
+  <main class="page">
+    <header class="top-hero">
+      <div class="top-logo" aria-hidden="true">☕</div>
+      <h1 class="top-title">ちょっと暇つぶし。</h1>
+      <p class="top-sub">1〜3分で遊べる、くだらないミニゲーム集。</p>
+    </header>
+
+    <section aria-labelledby="games-title">
+      <h2 id="games-title" class="section-title">あそべるゲーム</h2>
+      <ul id="game-list" class="game-list"></ul>
+      <noscript>
+        <p class="disclaimer">このサイトを遊ぶには JavaScript を有効にしてください。</p>
+      </noscript>
     </section>
 
-    <!-- 質問画面 -->
-    <section id="screen-question" class="screen" aria-live="polite">
-      <header class="q-header">
-        <button id="btn-back" class="btn-back" type="button" aria-label="前の質問に戻る">←</button>
-        <div class="progress">
-          <div class="progress-label"><span id="q-number">1</span> / <span id="q-total">10</span></div>
-          <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="progress-fill" class="progress-fill"></div>
-          </div>
-        </div>
-      </header>
-      <div id="q-card" class="q-card">
-        <p class="q-label">Q<span id="q-label-num">1</span></p>
-        <h2 id="q-text" class="q-text"></h2>
-        <div id="q-options" class="q-options"></div>
-      </div>
-    </section>
-
-    <!-- 診断中画面 -->
-    <section id="screen-loading" class="screen" aria-live="polite">
-      <div class="loading">
-        <div class="loading-train" aria-hidden="true">🚃</div>
-        <p class="loading-text">あなたにぴったりの街を<br>探しています…</p>
-      </div>
-    </section>
-
-    <!-- 結果画面 -->
-    <section id="screen-result" class="screen" aria-live="polite">
-      <div id="result-card" class="result-card">
-        <p class="result-pre">あなたは…</p>
-        <div id="result-emoji" class="result-emoji" aria-hidden="true"></div>
-        <h2 class="result-type"><span id="result-type"></span>タイプ</h2>
-        <p class="result-town-label">おすすめの街</p>
-        <p id="result-town" class="result-town"></p>
-        <p id="result-catch" class="result-catch"></p>
-        <p id="result-desc" class="result-desc"></p>
-
-        <div class="result-block">
-          <h3>こんな街</h3>
-          <ul id="result-features" class="result-features"></ul>
-        </div>
-
-        <div class="result-block">
-          <h3>相性のいい街</h3>
-          <p id="result-sub" class="result-sub"></p>
-        </div>
-      </div>
-
-      <div class="result-actions">
-        <button id="btn-share" class="btn btn-primary" type="button">結果をシェア</button>
-        <button id="btn-retry" class="btn btn-secondary" type="button">もう一度診断する</button>
-      </div>
-      <p id="share-toast" class="toast" role="status"></p>
-    </section>
+    <footer class="top-footer">
+      <p>ログイン不要・無料。ひまなときにどうぞ。</p>
+    </footer>
   </main>
 
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="assets/games.js"></script>
+  <script>
+    (() => {
+      const list = document.getElementById("game-list");
+
+      GAMES.forEach((game, i) => {
+        const li = document.createElement("li");
+        li.className = "game-card";
+        li.style.setProperty("--card-color", game.color);
+        li.style.animationDelay = i * 80 + "ms";
+
+        const icon = document.createElement("div");
+        icon.className = "game-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = game.emoji;
+
+        const body = document.createElement("div");
+        body.className = "game-body";
+
+        const title = document.createElement("h3");
+        title.className = "game-title";
+        title.textContent = game.title;
+
+        const desc = document.createElement("p");
+        desc.className = "game-desc";
+        desc.textContent = game.description;
+
+        const meta = document.createElement("p");
+        meta.className = "game-meta";
+        meta.textContent = "⏱ " + game.time;
+
+        const play = document.createElement("a");
+        play.className = "btn btn-primary game-play";
+        play.href = game.href;
+        play.textContent = "遊ぶ";
+        play.setAttribute("aria-label", game.title + "を遊ぶ");
+
+        body.append(title, desc, meta);
+        li.append(icon, body, play);
+        list.appendChild(li);
+      });
+
+      const soon = document.createElement("li");
+      soon.className = "game-card is-soon";
+      soon.innerHTML = '<div class="game-icon" aria-hidden="true">🛠</div>' +
+        '<div class="game-body"><h3 class="game-title">次のゲーム</h3>' +
+        '<p class="game-desc">鋭意（ゆるく）制作中…</p></div>';
+      list.appendChild(soon);
+    })();
+  </script>
 </body>
 </html>
