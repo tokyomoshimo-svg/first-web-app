@@ -1,0 +1,1140 @@
+/* 東京を走れ — 夜の東京を走る、スタイリッシュな小型ゲーム機風UI */
+
+:root {
+  --bg: #07080d;
+  --cyan: #35e0ff;
+  --magenta: #ff3ea5;
+  --amber: #ffc34d;
+  --graphite-1: #1a1d27;
+  --graphite-2: #0d0f15;
+  --text: #eef1ff;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ground: 318px; /* ワールド内の地面の高さ（上から） */
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background:
+    radial-gradient(70% 45% at 10% 0%, rgba(53, 224, 255, 0.08), transparent 70%) no-repeat,
+    radial-gradient(70% 45% at 90% 25%, rgba(255, 62, 165, 0.08), transparent 70%) no-repeat,
+    var(--bg);
+  color: var(--text);
+}
+
+.run-app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(8px, env(safe-area-inset-top)) 10px max(20px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* プレイ中はページを動かさない（タップをすべてジャンプに使う） */
+.run-app[data-state="play"],
+.run-app[data-state="countdown"] {
+  touch-action: none;
+}
+
+.run-app .site-nav {
+  margin-bottom: 6px;
+}
+
+.run-app .site-nav a {
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #7d849e;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   ゲーム機
+   ========================================================= */
+
+.machine {
+  position: relative;
+  padding: 10px 10px 12px;
+  border-radius: 20px;
+  background: linear-gradient(165deg, var(--graphite-1), var(--graphite-2) 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 50px rgba(0, 0, 0, 0.7);
+}
+
+/* 本体の縁を走る細いネオンライン */
+.machine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(53, 224, 255, 0.55), transparent 35%, transparent 65%, rgba(255, 62, 165, 0.55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.machine-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+
+.machine-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.mt-en {
+  font-family: var(--mono);
+  font-size: clamp(0.95rem, 4.6vw, 1.15rem);
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.12em;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mt-ja {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #aab0c8;
+}
+
+.machine-dots {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.machine-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2a2f40;
+}
+
+.machine-dots i:nth-child(1) { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+[data-state="play"] .machine-dots i:nth-child(2),
+[data-state="countdown"] .machine-dots i:nth-child(2) { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+[data-state="result"] .machine-dots i:nth-child(3),
+[data-state="crash"] .machine-dots i:nth-child(3) { background: var(--magenta); box-shadow: 0 0 6px var(--magenta); }
+
+/* ---- 画面 ---- */
+
+.screen-frame {
+  padding: 6px;
+  border-radius: 14px;
+  background: #030407;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.screen {
+  position: relative;
+  width: 100%;
+  max-width: max(250px, calc(100dvh - 280px)); /* 縦が短い端末でも全体が収まるように */
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 9px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #0b0f24;
+  cursor: pointer;
+}
+
+.screen.shake {
+  animation: shake 0.45s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-7px, 3px); }
+  30% { transform: translate(6px, -3px); }
+  45% { transform: translate(-5px, 2px); }
+  60% { transform: translate(4px, -1px); }
+  80% { transform: translate(-2px, 1px); }
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* =========================================================
+   ワールド（400×400 を画面サイズに拡大縮小）
+   ========================================================= */
+
+.world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 400px;
+  transform-origin: 0 0;
+  transform: scale(var(--scale, 1));
+  overflow: hidden;
+}
+
+.sky {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(#070a1f 0%, #121a45 45%, #2a2160 70%, #3a2458 80%);
+}
+
+.stars {
+  position: absolute;
+  inset: 0 0 45% 0;
+  background-image:
+    radial-gradient(1.2px 1.2px at 8% 12%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 30%, #fff 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 41% 8%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 57% 24%, #fff 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 73% 14%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 33%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 95% 6%, #fff 50%, transparent 51%);
+  animation: twinkle 3.4s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+.moon {
+  position: absolute;
+  top: 40px;
+  right: 150px; /* 右上の距離表示と重ならない位置 */
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  box-shadow: 7px -5px 0 0 #fff2c2;
+  filter: drop-shadow(0 0 8px rgba(255, 242, 194, 0.6));
+}
+
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 400px;
+  will-change: transform;
+}
+
+.layer svg {
+  display: block;
+}
+
+/* 足元の背景を少し暗くして、障害物を見やすくする */
+.street-shade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 220px;
+  height: 100px;
+  background: linear-gradient(rgba(6, 8, 20, 0), rgba(6, 8, 20, 0.62) 75%);
+  pointer-events: none;
+}
+
+/* 窓明かりのまたたき・航空障害灯 */
+.blink {
+  animation: blink 4s steps(2) infinite;
+}
+
+.blink.b2 { animation-duration: 5.5s; animation-delay: -2s; }
+.blink.b3 { animation-duration: 7s; animation-delay: -4s; }
+
+@keyframes blink {
+  50% { opacity: 0.15; }
+}
+
+.beacon {
+  animation: beacon 1.6s ease-in-out infinite;
+}
+
+@keyframes beacon {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.neon {
+  animation: neon 6s infinite;
+}
+
+@keyframes neon {
+  0%, 93%, 100% { opacity: 1; }
+  94% { opacity: 0.4; }
+  95% { opacity: 1; }
+  97% { opacity: 0.6; }
+}
+
+/* 歩行者用信号：青 → 赤 */
+.sig-g { animation: sig-g 9s steps(1) infinite; }
+.sig-r { animation: sig-r 9s steps(1) infinite; }
+
+@keyframes sig-g { 0% { opacity: 1; } 50% { opacity: 0.15; } }
+@keyframes sig-r { 0% { opacity: 0.15; } 50% { opacity: 1; } }
+
+/* ---- 歩道と車道 ---- */
+
+.sidewalk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--ground);
+  height: 30px;
+  overflow: hidden;
+  background: #2b2f42;
+  border-top: 2px solid #8b90a8;
+  box-shadow: inset 0 6px 10px rgba(0, 0, 0, 0.25);
+}
+
+.sidewalk-tiles {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 480px;
+  height: 100%;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 38px, rgba(0, 0, 0, 0.28) 38px 40px),
+    linear-gradient(transparent 55%, rgba(0, 0, 0, 0.25) 55% 58%, transparent 58%);
+  will-change: transform;
+}
+
+.road {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--ground) + 30px);
+  bottom: 0;
+  overflow: hidden;
+  background: linear-gradient(#15161f, #0d0e15);
+  border-top: 3px solid #4a4e63; /* 縁石 */
+}
+
+.road-lines {
+  position: absolute;
+  left: 0;
+  top: 24px;
+  width: 520px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, #d8d9e0 0 30px, transparent 30px 60px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+/* 対向車（ライトの帯が流れる） */
+.car {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 64px;
+  height: 18px;
+  will-change: transform;
+}
+
+.car-body {
+  position: absolute;
+  left: 10px;
+  right: 0;
+  top: 2px;
+  bottom: 0;
+  border-radius: 8px 6px 4px 4px;
+  background: linear-gradient(#3b3f55, #1b1d29);
+}
+
+.car-light {
+  position: absolute;
+  right: 54px;
+  top: 6px;
+  width: 90px;
+  height: 10px;
+  background: linear-gradient(to left, rgba(255, 246, 210, 0.75), rgba(255, 246, 210, 0));
+  clip-path: polygon(100% 30%, 0 0, 0 100%, 100% 70%);
+}
+
+.car-tail {
+  position: absolute;
+  right: 0;
+  top: 7px;
+  width: 4px;
+  height: 5px;
+  background: #ff3b3b;
+  box-shadow: 0 0 6px 2px rgba(255, 59, 59, 0.7);
+}
+
+/* =========================================================
+   障害物
+   ========================================================= */
+
+.obstacles {
+  position: absolute;
+  inset: 0;
+}
+
+.ob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.ob svg {
+  display: block;
+  overflow: visible;
+}
+
+.ob-pigeon .pigeon-bob {
+  animation: pigeon 0.32s ease-in-out infinite alternate;
+  transform-origin: 50% 100%;
+}
+
+@keyframes pigeon {
+  to { transform: translateY(-1.5px) rotate(-4deg); }
+}
+
+.ob-puddle .shine {
+  animation: shine 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes shine {
+  from { opacity: 0.25; }
+  to { opacity: 0.7; }
+}
+
+/* =========================================================
+   主人公
+   ========================================================= */
+
+.runner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 40px;
+  will-change: transform;
+}
+
+.runner-shadow {
+  position: absolute;
+  left: 2px;
+  width: 22px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  top: calc(40px - 2px + var(--lift, 0px));
+  transform: scale(var(--shadow, 1));
+}
+
+.runner-body {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+}
+
+.runner-body i {
+  position: absolute;
+  display: block;
+}
+
+.head {
+  left: 6px;
+  top: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ffd9b8;
+  box-shadow: inset -3px -2px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* 前髪とキャップっぽいシルエット */
+.head::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 17px;
+  height: 7px;
+  border-radius: 9px 9px 2px 2px;
+  background: #22263a;
+}
+
+/* 目 */
+.head::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 7px;
+  width: 2px;
+  height: 3px;
+  border-radius: 1px;
+  background: #22263a;
+}
+
+.torso {
+  left: 7px;
+  top: 14px;
+  width: 13px;
+  height: 14px;
+  border-radius: 5px 5px 3px 3px;
+  background: linear-gradient(#35e0ff, #1aa7d0);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15);
+}
+
+.arm {
+  top: 16px;
+  width: 4px;
+  height: 11px;
+  border-radius: 2px;
+  transform-origin: 50% 1px;
+}
+
+.arm-front { left: 12px; background: #1aa7d0; }
+.arm-back { left: 11px; background: #12809f; }
+
+.leg {
+  top: 26px;
+  width: 5px;
+  height: 13px;
+  border-radius: 2px 2px 3px 3px;
+  transform-origin: 50% 1px;
+  background: #2b2f48;
+}
+
+.leg-front { left: 13px; }
+.leg-back { left: 10px; background: #1e2135; }
+
+/* 靴 */
+.leg::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--magenta);
+}
+
+/* 走る */
+.runner.is-running .runner-body {
+  animation: bob var(--stride, 0.32s) linear infinite;
+}
+
+.runner.is-running .leg-front,
+.runner.is-running .arm-back { animation: swing-a var(--stride, 0.32s) linear infinite; }
+.runner.is-running .leg-back,
+.runner.is-running .arm-front { animation: swing-b var(--stride, 0.32s) linear infinite; }
+
+@keyframes swing-a {
+  0%, 100% { transform: rotate(38deg); }
+  50% { transform: rotate(-38deg); }
+}
+
+@keyframes swing-b {
+  0%, 100% { transform: rotate(-38deg); }
+  50% { transform: rotate(38deg); }
+}
+
+@keyframes bob {
+  0%, 50%, 100% { transform: translateY(0); }
+  25%, 75% { transform: translateY(-2px); }
+}
+
+/* ジャンプ中：脚をたたむ */
+.runner.is-air .runner-body { transform: rotate(-6deg); }
+.runner.is-air .leg-front { transform: rotate(-55deg) translateY(-2px); }
+.runner.is-air .leg-back { transform: rotate(40deg) translateY(-2px); }
+.runner.is-air .arm-front { transform: rotate(-150deg); }
+.runner.is-air .arm-back { transform: rotate(140deg); }
+
+/* 着地：ちょっと潰れる */
+.runner.is-land .runner-body {
+  animation: land 0.16s ease-out;
+}
+
+@keyframes land {
+  0% { transform: scale(1.15, 0.82); }
+  100% { transform: scale(1, 1); }
+}
+
+/* 転ぶ */
+.runner.is-down .runner-body {
+  animation: fall 0.5s ease-out forwards;
+}
+
+.runner.is-down .leg-front { transform: rotate(-70deg); }
+.runner.is-down .leg-back { transform: rotate(-30deg); }
+.runner.is-down .arm-front { transform: rotate(-160deg); }
+
+@keyframes fall {
+  0% { transform: rotate(0); }
+  40% { transform: translate(6px, -6px) rotate(40deg); }
+  100% { transform: translate(14px, 6px) rotate(88deg); }
+}
+
+/* =========================================================
+   演出
+   ========================================================= */
+
+.fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dust {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: rgba(220, 225, 255, 0.55);
+  animation: dust 0.4s ease-out forwards;
+}
+
+@keyframes dust {
+  to { transform: translate(var(--dx), -6px) scale(0.3); opacity: 0; }
+}
+
+.star {
+  position: absolute;
+  font-size: 12px;
+  color: var(--amber);
+  text-shadow: 0 0 6px var(--amber);
+  animation: star 0.9s ease-out forwards;
+}
+
+@keyframes star {
+  0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.1) rotate(180deg); opacity: 0; }
+}
+
+.crash-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 30% 70%, rgba(255, 62, 165, 0.15), rgba(255, 40, 80, 0.5));
+}
+
+[data-state="crash"] .crash-flash {
+  animation: crash-flash 0.6s ease-out;
+}
+
+@keyframes crash-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- HUD ---- */
+
+.hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 10px;
+  pointer-events: none;
+  font-family: var(--mono);
+  transition: opacity 0.3s ease;
+}
+
+[data-state="start"] .hud {
+  opacity: 0;
+}
+
+.hud p {
+  margin: 0;
+}
+
+.hud-score {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.hud-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.25em;
+  color: var(--cyan);
+  text-shadow: 0 0 6px rgba(53, 224, 255, 0.8);
+}
+
+#hud-score {
+  display: inline-block;
+  font-size: clamp(1.25rem, 6.5vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.45), 0 2px 0 rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+  transform-origin: 0 50%;
+}
+
+#hud-score.pulse {
+  animation: pulse 0.25s ease-out;
+}
+
+@keyframes pulse {
+  50% { transform: scale(1.12); color: var(--amber); }
+}
+
+.hud-dist {
+  margin-top: 2px !important;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 62, 165, 0.45);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #ffd1ea;
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-up {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  z-index: 21;
+  margin: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: clamp(1.4rem, 8vw, 2rem);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  text-shadow: 0 0 12px rgba(255, 195, 77, 0.9), 0 3px 0 rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.speed-up.show {
+  animation: speed-up 1.1s ease-out;
+}
+
+@keyframes speed-up {
+  0% { opacity: 0; transform: translateX(40px) skewX(-12deg); }
+  15% { opacity: 1; transform: translateX(0) skewX(-12deg); }
+  75% { opacity: 1; transform: translateX(0) skewX(-12deg); }
+  100% { opacity: 0; transform: translateX(-40px) skewX(-12deg); }
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: clamp(4rem, 26vw, 7rem);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(53, 224, 255, 0.9), 0 4px 0 rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.countdown.is-go {
+  color: var(--amber);
+  font-style: italic;
+  text-shadow: 0 0 20px rgba(255, 195, 77, 0.9), 0 4px 0 rgba(0, 0, 0, 0.5);
+}
+
+.countdown.pop {
+  animation: count-pop 0.75s ease-out forwards;
+}
+
+@keyframes count-pop {
+  0% { transform: scale(2); opacity: 0; }
+  25% { transform: scale(1); opacity: 1; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+
+/* =========================================================
+   画面内オーバーレイ
+   ========================================================= */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.overlay p {
+  margin: 0;
+}
+
+[data-state="start"] .overlay-start,
+[data-state="paused"] .overlay-pause,
+[data-state="result"] .overlay-result {
+  display: flex;
+  animation: ov-in 0.35s ease;
+}
+
+@keyframes ov-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.overlay-start {
+  background: linear-gradient(rgba(5, 6, 14, 0.25), rgba(5, 6, 14, 0.7) 75%);
+  justify-content: flex-start;
+  padding-top: 22%;
+}
+
+.overlay-pause {
+  background: rgba(5, 6, 14, 0.7);
+}
+
+.ov-kicker {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+  color: var(--cyan);
+  text-shadow: 0 0 6px var(--cyan);
+}
+
+.ov-title {
+  margin-top: 4px !important;
+  font-size: clamp(2.1rem, 11vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  transform: skewX(-8deg);
+  color: #fff;
+  text-shadow: 3px 3px 0 var(--magenta), -2px -2px 0 rgba(53, 224, 255, 0.85), 0 0 22px rgba(255, 62, 165, 0.5);
+}
+
+.ov-title.small {
+  font-family: var(--mono);
+  font-size: 2rem;
+  letter-spacing: 0.2em;
+}
+
+.ov-lead {
+  margin-top: 8px !important;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #dfe3ff;
+  text-shadow: 0 1px 3px #000;
+}
+
+.ov-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px !important;
+  padding: 6px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(53, 224, 255, 0.3);
+  font-size: 0.8rem;
+  color: #e6e9ff;
+}
+
+.ov-hint b {
+  color: var(--cyan);
+}
+
+.ov-pc {
+  font-size: 0.65rem;
+  color: #8f96b3;
+}
+
+/* ---- 結果 ---- */
+
+.overlay-result {
+  background: rgba(5, 6, 14, 0.8);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.result > * {
+  opacity: 0;
+  animation: res-in 0.35s ease forwards;
+}
+
+.r-over { animation: over-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+.r-dist { animation-delay: 0.25s; }
+.r-score { animation-delay: 0.45s; }
+.r-quip { animation-delay: 0.65s; }
+
+@keyframes res-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes over-in {
+  0% { opacity: 0; transform: scale(1.8) skewX(-10deg); letter-spacing: 0.4em; }
+  100% { opacity: 1; transform: scale(1) skewX(-10deg); }
+}
+
+.r-over {
+  font-family: var(--mono);
+  font-size: clamp(1.7rem, 9vw, 2.3rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #fff;
+  text-shadow: 3px 3px 0 var(--magenta), -2px -2px 0 rgba(53, 224, 255, 0.8);
+}
+
+.r-dist {
+  margin-top: 8px !important;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #cfd4ee;
+}
+
+.r-dist b {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: clamp(1.6rem, 8vw, 2rem);
+  color: #ffd1ea;
+  text-shadow: 0 0 10px rgba(255, 62, 165, 0.6);
+}
+
+.r-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px !important;
+  font-family: var(--mono);
+}
+
+.r-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.25em;
+  color: var(--cyan);
+}
+
+#result-score {
+  display: inline-block;
+  font-size: clamp(1.6rem, 8vw, 2rem);
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+#result-score.bump {
+  animation: bump 0.35s ease;
+}
+
+@keyframes bump {
+  50% { transform: scale(1.2); color: var(--amber); }
+}
+
+.r-quip {
+  margin-top: 8px !important;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+@media (max-height: 640px) {
+  .r-dist { font-size: 0.8rem; line-height: 1.35; }
+  .ov-hint { margin-top: 8px !important; }
+}
+
+/* =========================================================
+   操作エリア
+   ========================================================= */
+
+.controls {
+  margin-top: 10px;
+}
+
+.run-btn,
+.tap-zone {
+  display: none;
+}
+
+[data-state="start"] .btn-start,
+[data-state="result"] .btn-retry,
+[data-state="crash"] .btn-retry {
+  display: block;
+}
+
+[data-state="countdown"] .tap-zone,
+[data-state="play"] .tap-zone,
+[data-state="paused"] .tap-zone {
+  display: flex;
+}
+
+.run-btn {
+  position: relative;
+  width: 100%;
+  height: 84px;
+  border: none;
+  border-radius: 18px;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #fff;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(100deg, #18b8e0, #6b5cff 55%, #e0359a);
+  box-shadow: 0 6px 0 #3a2a7a, 0 14px 30px rgba(107, 92, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  transition: transform 0.06s ease, box-shadow 0.06s ease, opacity 0.3s ease, filter 0.3s ease;
+}
+
+.run-btn:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 #3a2a7a, 0 6px 14px rgba(107, 92, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.run-btn:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+/* 結果が出た直後は誤タップ防止で少しだけ押せない */
+.run-btn:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.5);
+  cursor: default;
+}
+
+.run-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%) -150% 0 / 200% 100% no-repeat;
+  animation: sheen 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sheen {
+  0%, 40% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+
+.tap-zone {
+  height: 84px;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: 1px dashed rgba(53, 224, 255, 0.3);
+  background: rgba(53, 224, 255, 0.04);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  color: rgba(53, 224, 255, 0.55);
+  cursor: pointer;
+}
+
+.tap-zone.tapped {
+  animation: tapped 0.2s ease-out;
+}
+
+@keyframes tapped {
+  0% { background: rgba(53, 224, 255, 0.18); }
+  100% { background: rgba(53, 224, 255, 0.04); }
+}
+
+/* =========================================================
+   結果画面のサブボタン
+   ========================================================= */
+
+.sub-actions {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+[data-state="result"] .sub-actions {
+  display: grid;
+  animation: ov-in 0.4s ease 0.3s both;
+}
+
+.sub-actions [hidden] {
+  display: none;
+}
+
+.sub-actions > :last-child,
+.sub-actions:has(#btn-share-native[hidden]) .btn-x {
+  grid-column: 1 / -1;
+}
+
+.sub-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #dfe3ff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sub-btn:active {
+  transform: scale(0.97);
+}
+
+.sub-btn.btn-x {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+@media (min-width: 720px) {
+  .run-app {
+    padding-top: 20px;
+  }
+}

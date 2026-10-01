@@ -29,4 +29,13 @@ const GAMES = [
     color: "#1d2557",
     href: "games/train/",
   },
+  {
+    id: "tokyo-run",
+    title: "東京を走れ",
+    emoji: "🏃",
+    description: "夜の東京をひたすら走る。タップでジャンプして、コーンや鳩やタクシーを避けろ。",
+    time: "約1分",
+    color: "#ff3ea5",
+    href: "games/tokyo-run/",
+  },
 ];

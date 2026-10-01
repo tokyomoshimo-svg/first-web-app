@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07080d">
+  <meta name="description" content="夜の東京をひたすら走る。タップでジャンプして、コーンや鳩やタクシーを避ける横スクロールアクション。">
+  <title>東京を走れ｜ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏃</text></svg>">
+  <link rel="stylesheet" href="../../assets/common.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="run-app" id="app" data-state="start">
+    <nav class="site-nav" aria-label="サイト">
+      <a href="../../">← ちょっと暇つぶし。</a>
+    </nav>
+
+    <div class="machine">
+      <!-- ヘッダー -->
+      <header class="machine-head">
+        <h1 class="machine-title" id="game-title"><span class="mt-en">TOKYO RUN</span><span class="mt-ja">東京を走れ</span></h1>
+        <span class="machine-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </header>
+
+      <!-- ゲーム画面 -->
+      <div class="screen-frame">
+        <div class="screen" id="screen">
+          <div class="world" id="world" aria-hidden="true">
+            <div class="sky">
+              <div class="stars"></div>
+              <div class="moon"></div>
+            </div>
+            <div class="layer layer-far" id="layer-far"></div>
+            <div class="layer layer-mid" id="layer-mid"></div>
+            <div class="street-shade"></div>
+            <div class="layer layer-near" id="layer-near"></div>
+            <div class="sidewalk"><div class="sidewalk-tiles" id="sidewalk"></div></div>
+            <div class="road">
+              <div class="road-lines" id="road-lines"></div>
+              <div class="car" id="car"><i class="car-light"></i><i class="car-body"></i><i class="car-tail"></i></div>
+            </div>
+            <div class="obstacles" id="obstacles"></div>
+            <div class="runner" id="runner">
+              <div class="runner-shadow"></div>
+              <div class="runner-body">
+                <i class="leg leg-back"></i>
+                <i class="arm arm-back"></i>
+                <i class="torso"></i>
+                <i class="leg leg-front"></i>
+                <i class="head"></i>
+                <i class="arm arm-front"></i>
+              </div>
+            </div>
+            <div class="fx" id="fx"></div>
+          </div>
+
+          <!-- HUD -->
+          <div class="hud" aria-hidden="true">
+            <p class="hud-score"><span class="hud-label">SCORE</span><span id="hud-score">0000</span></p>
+            <p class="hud-dist"><span id="hud-dist">0</span>m</p>
+          </div>
+          <p class="speed-up" id="speed-up" aria-hidden="true">SPEED UP!</p>
+          <p class="countdown" id="countdown" aria-hidden="true"></p>
+          <div class="crash-flash" aria-hidden="true"></div>
+
+          <!-- 画面内：タイトル -->
+          <section class="overlay overlay-start" aria-labelledby="game-title">
+            <p class="ov-kicker">NIGHT CITY DASH</p>
+            <p class="ov-title">東京を走れ</p>
+            <p class="ov-lead">東京の夜を、ただ走れ。</p>
+            <p class="ov-hint">
+              <span><b>タップ</b>でジャンプ</span>
+              <span class="ov-pc">PC：Space・Enter・クリック</span>
+            </p>
+          </section>
+
+          <!-- 画面内：一時停止 -->
+          <section class="overlay overlay-pause">
+            <p class="ov-title small">PAUSE</p>
+            <p class="ov-lead">まもなく再開します</p>
+          </section>
+
+          <!-- 画面内：結果 -->
+          <section class="overlay overlay-result" aria-live="polite">
+            <div class="result" id="result">
+              <p class="r-over">GAME OVER</p>
+              <p class="r-dist">東京を<br><b><span id="result-dist">0</span>m</b><br>走りました。</p>
+              <p class="r-score"><span class="r-label">SCORE</span><span id="result-score">0</span></p>
+              <p class="r-quip" id="result-quip"></p>
+            </div>
+          </section>
+
+          <div class="scanlines" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <!-- 操作エリア -->
+      <div class="controls">
+        <button id="btn-start" class="run-btn btn-start" type="button">ゲームスタート</button>
+        <p class="tap-zone" aria-hidden="true"><span>TAP TO JUMP</span></p>
+        <button id="btn-retry" class="run-btn btn-retry" type="button" disabled>もう一回走る</button>
+      </div>
+    </div>
+
+    <!-- 結果画面のサブボタン -->
+    <div class="sub-actions">
+      <a id="btn-share-x" class="sub-btn btn-x" href="#" target="_blank" rel="noopener">𝕏 結果をシェア</a>
+      <button id="btn-share-native" class="sub-btn" type="button" hidden>ほかのアプリでシェア</button>
+      <a class="sub-btn" href="../../">ほかのゲームで遊ぶ</a>
+    </div>
+
+    <p class="sr-only" id="sr-status" role="status"></p>
+  </main>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
