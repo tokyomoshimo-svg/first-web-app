@@ -1,0 +1,930 @@
+/* 終電を逃すな */
+
+:root {
+  --night-1: #070b1c;
+  --night-2: #141c44;
+  --lamp: #ffe9a8;
+  --door-glow: #ffd84d;
+  --stripe: #7ac943;
+  --ride: #ff5a4e;
+  --ride-dark: #b8332b;
+  --go: #ffd84d;
+  --go-dark: #c79a12;
+}
+
+/* ページが長くなっても下まで夜空が続くように html にも色を敷く */
+html {
+  background: var(--night-1);
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% -10%, #263372 0, transparent 55%) no-repeat,
+    linear-gradient(var(--night-2), var(--night-1) 640px) no-repeat,
+    var(--night-1);
+  color: #eef1ff;
+}
+
+.train-app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.train-app .site-nav {
+  margin-bottom: 12px;
+}
+
+.train-app .site-nav a {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #cfd6ff;
+}
+
+/* =========================================================
+   ステージ（夜の駅）
+   ========================================================= */
+
+.stage {
+  position: relative;
+  height: clamp(250px, 48vh, 360px);
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(#0d1333, #1d2557 60%, #2b2f5c);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  isolation: isolate;
+  transition: height 0.4s ease;
+}
+
+/* 結果画面ではステージを少し小さくして、ボタンを画面内に収める */
+[data-state="result"] .stage {
+  height: clamp(200px, 32vh, 280px);
+}
+
+/* ---- 夜空・街 ---- */
+
+.sky {
+  position: absolute;
+  inset: 0;
+}
+
+.stars {
+  position: absolute;
+  inset: 0 0 50% 0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 22%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 28% 30%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 47% 18%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 63% 34%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 81% 24%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 40%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 42%, #fff 50%, transparent 51%);
+  animation: twinkle 3s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+
+.moon {
+  position: absolute;
+  top: 17%;
+  left: 47%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: 6px -4px 0 0 #fff3c4;
+  filter: drop-shadow(0 0 6px rgba(255, 243, 196, 0.7));
+}
+
+.city {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 42%;
+  height: 34%;
+}
+
+.city span {
+  position: absolute;
+  bottom: 0;
+  left: var(--x);
+  width: var(--w);
+  height: var(--h);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 3px, rgba(255, 214, 120, 0.55) 3px 5px, transparent 5px 8px),
+    repeating-linear-gradient(0deg, transparent 0 4px, #0f1430 4px 7px),
+    #0f1430;
+  background-blend-mode: normal;
+  opacity: 0.9;
+  border-radius: 2px 2px 0 0;
+}
+
+.city span:nth-child(odd) {
+  animation: windows 4s steps(2) infinite;
+}
+
+@keyframes windows {
+  50% { filter: brightness(0.7); }
+}
+
+/* 遠くのタワー（紅白の細い鉄塔） */
+.city .tower {
+  width: 5%;
+  margin-left: 1.5%;
+  background: repeating-linear-gradient(0deg, #c9472c 0 9px, #e9e4dc 9px 11px);
+  clip-path: polygon(46% 0, 54% 0, 62% 40%, 100% 100%, 75% 100%, 50% 70%, 25% 100%, 0 100%, 38% 40%);
+  opacity: 0.75;
+}
+
+/* ---- 屋根と照明 ---- */
+
+.roof {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 11%;
+  background: linear-gradient(#20253f, #2c3252);
+  box-shadow: 0 2px 0 #3b4268;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  z-index: 2;
+}
+
+.lamp {
+  position: relative;
+  width: 22%;
+  height: 5px;
+  margin-bottom: -2px;
+  background: #fffbe8;
+  border-radius: 3px;
+  box-shadow: 0 0 10px 2px rgba(255, 233, 168, 0.9);
+}
+
+.lamp::after {
+  content: "";
+  position: absolute;
+  left: -40%;
+  right: -40%;
+  top: 4px;
+  height: 120px;
+  background: radial-gradient(ellipse at 50% 0, rgba(255, 233, 168, 0.22), transparent 70%);
+  pointer-events: none;
+}
+
+.lamp.flicker {
+  animation: flicker 5s infinite;
+}
+
+@keyframes flicker {
+  0%, 92%, 100% { opacity: 1; }
+  93% { opacity: 0.3; }
+  94% { opacity: 1; }
+  96% { opacity: 0.5; }
+}
+
+/* ---- 駅名標・発車標 ---- */
+
+.station-sign {
+  position: absolute;
+  top: 15%;
+  left: 4%;
+  width: 40%;
+  padding: 4px 4px 3px;
+  background: #fff;
+  border-radius: 4px;
+  border-bottom: 4px solid var(--stripe);
+  color: #1b1f33;
+  text-align: center;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.25);
+  z-index: 1;
+}
+
+.station-sign p {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.sign-name {
+  font-size: clamp(0.8rem, 4vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.sign-roman {
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  color: #555b70;
+}
+
+.sign-next {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px !important;
+  font-size: 0.5rem;
+  color: #555b70;
+  white-space: nowrap;
+}
+
+.departure {
+  position: absolute;
+  top: 15%;
+  right: 4%;
+  width: 46%;
+  padding: 4px 6px;
+  background: #111;
+  border: 2px solid #333a55;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: #ffb340;
+  text-shadow: 0 0 6px rgba(255, 179, 64, 0.8);
+  z-index: 1;
+}
+
+.dep-row {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: clamp(0.55rem, 2.8vw, 0.72rem);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dep-label {
+  color: #ff5a4e;
+  text-shadow: 0 0 6px rgba(255, 90, 78, 0.8);
+}
+
+.dep-time {
+  justify-content: center;
+  font-size: clamp(0.8rem, 4.2vw, 1rem);
+  font-weight: 700;
+  color: #7dff9b;
+  text-shadow: 0 0 6px rgba(125, 255, 155, 0.8);
+}
+
+.app-warning .dep-time {
+  color: #ff6b5e;
+  text-shadow: 0 0 8px rgba(255, 107, 94, 0.9);
+  animation: blink 0.5s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.4; }
+}
+
+/* ---- 線路と電車 ---- */
+
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 41%;
+  bottom: 20%;
+  z-index: 3;
+}
+
+.rails {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14%;
+  background:
+    linear-gradient(#9aa3bd, #9aa3bd) 0 20% / 100% 2px no-repeat,
+    linear-gradient(#9aa3bd, #9aa3bd) 0 70% / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, #3a2e28 0 6px, transparent 6px 16px),
+    #191c2c;
+}
+
+.train {
+  position: absolute;
+  left: 0;
+  bottom: 9%;
+  width: 160%;
+  height: 84%;
+  display: flex;
+  gap: 1.2%;
+  transform: translate3d(140%, 0, 0); /* JSが動かす前は画面外 */
+  will-change: transform;
+}
+
+.beam {
+  position: absolute;
+  right: 100%;
+  top: 30%;
+  width: 70%;
+  height: 90%;
+  background: linear-gradient(to left, rgba(255, 244, 200, 0.42), rgba(255, 244, 200, 0) 85%);
+  clip-path: polygon(100% 42%, 0 0, 0 100%, 100% 58%);
+  animation: beam 0.12s infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes beam {
+  to { opacity: 0.8; }
+}
+
+.car {
+  position: relative;
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  padding: 8% 3% 0;
+  background: linear-gradient(#f4f6fa, #c4cbd8 70%, #9da6b8);
+  border-radius: 6px;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.15);
+}
+
+.car-front {
+  border-radius: 38% 6px 6px 18% / 55% 6px 6px 30%;
+  padding-left: 9%;
+}
+
+.train.is-running .car {
+  animation: bob 0.16s ease-in-out infinite alternate;
+}
+
+.train.is-running .car:nth-child(3) { animation-delay: 0.05s; }
+.train.is-running .car:nth-child(4) { animation-delay: 0.1s; }
+
+@keyframes bob {
+  to { transform: translateY(1px); }
+}
+
+.window {
+  width: 17%;
+  height: 34%;
+  margin-top: 4%;
+  background: linear-gradient(#fff3c9, #ffd67a);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 2px #59607a, 0 0 8px rgba(255, 214, 122, 0.6);
+}
+
+.window.cab {
+  width: 13%;
+  background: linear-gradient(#2a3150, #10142a);
+  box-shadow: inset 0 0 0 2px #59607a;
+}
+
+.door {
+  position: relative;
+  width: 11%;
+  height: 78%;
+  background: linear-gradient(#cfd5e0, #aab2c3);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px #7d869c;
+  overflow: hidden;
+}
+
+.door::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 10%;
+  height: 30%;
+  background: linear-gradient(#fff3c9, #ffd67a);
+  border-radius: 2px;
+}
+
+/* 狙うドア（乗車位置に合わせるドア） */
+.door.target {
+  width: 13%;
+  background: linear-gradient(#fff7da, #ffe08a); /* ドアが開いたとき見える車内 */
+  box-shadow: 0 0 0 2px var(--door-glow), 0 0 12px 3px rgba(255, 216, 77, 0.85);
+  animation: door-glow 0.8s ease-in-out infinite alternate;
+}
+
+.door.target::before {
+  display: none;
+}
+
+@keyframes door-glow {
+  to { box-shadow: 0 0 0 2px var(--door-glow), 0 0 20px 6px rgba(255, 216, 77, 0.95); }
+}
+
+.leaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(#cfd5e0, #aab2c3);
+  box-shadow: inset 0 0 0 1px #7d869c;
+  transition: transform 0.35s ease-out;
+}
+
+.leaf::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 10%;
+  height: 30%;
+  background: linear-gradient(#fff3c9, #ffd67a);
+  border-radius: 2px;
+}
+
+.leaf.l { left: 0; }
+.leaf.r { right: 0; }
+
+.door.target.is-open .leaf.l { transform: translateX(-92%); }
+.door.target.is-open .leaf.r { transform: translateX(92%); }
+
+.stripe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20%;
+  height: 8%;
+  background: var(--stripe);
+  pointer-events: none;
+}
+
+.car-front .stripe {
+  left: 6%;
+}
+
+.headlight {
+  position: absolute;
+  left: 7%;
+  bottom: 34%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fffbe0;
+  box-shadow: 0 0 6px 3px rgba(255, 248, 200, 0.95), 0 0 18px 8px rgba(255, 248, 200, 0.45);
+}
+
+.taillight {
+  position: absolute;
+  right: 4%;
+  bottom: 34%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 8px 3px rgba(255, 59, 48, 0.8);
+}
+
+.bogie {
+  position: absolute;
+  bottom: -9%;
+  width: 18%;
+  height: 12%;
+  background: #2a2e3d;
+  border-radius: 4px;
+}
+
+.bogie.b1 { left: 12%; }
+.bogie.b2 { right: 12%; }
+
+/* ---- ホーム ---- */
+
+.platform {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20%;
+  background: linear-gradient(#5a6074, #3b4052 30%, #2a2e3b);
+  border-top: 2px solid #c9ccd6;
+  z-index: 4;
+}
+
+.tactile {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  height: 12%;
+  background: repeating-linear-gradient(90deg, #f2c94c 0 6px, #d9ab1f 6px 8px);
+  opacity: 0.9;
+}
+
+.marker {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ドアとの位置合わせ用のガイド線 */
+.marker::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 0;
+  height: 210%;
+  margin-bottom: 2px;
+  border-left: 2px dashed rgba(255, 216, 77, 0.55);
+  transform: translateX(-1px);
+}
+
+.marker-arrow {
+  margin-top: -2px;
+  color: var(--door-glow);
+  font-size: 0.9rem;
+  line-height: 1;
+  transform: rotate(180deg);
+  text-shadow: 0 0 8px rgba(255, 216, 77, 0.9);
+  animation: arrow 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes arrow {
+  to { transform: rotate(180deg) translateY(3px); }
+}
+
+.marker-label {
+  margin-top: 2px;
+  padding: 0 6px;
+  background: var(--door-glow);
+  color: #2a2100;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ---- 演出 ---- */
+
+.flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.stage.is-success .flash {
+  background: radial-gradient(circle at 50% 55%, rgba(255, 233, 140, 0.75), rgba(255, 233, 140, 0) 65%);
+  animation: flash 0.7s ease-out;
+}
+
+.stage.is-fail .flash {
+  background: radial-gradient(circle at 50% 50%, transparent 35%, rgba(255, 40, 40, 0.55));
+  animation: flash 0.9s ease-out;
+}
+
+@keyframes flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.stage.shake {
+  animation: shake 0.45s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(3px); }
+}
+
+.particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.particles span {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 2px;
+  background: var(--c);
+  animation: burst 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes burst {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(260deg); opacity: 0; }
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(4rem, 26vw, 7rem);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(125, 180, 255, 0.9), 0 4px 0 #2b3a8f;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.countdown.is-go {
+  font-size: clamp(2.4rem, 14vw, 4rem);
+  color: var(--door-glow);
+  text-shadow: 0 0 20px rgba(255, 216, 77, 0.9), 0 4px 0 #8a6a00;
+}
+
+.countdown.pop {
+  animation: count-pop 0.9s ease-out forwards;
+}
+
+@keyframes count-pop {
+  0% { transform: scale(2.2); opacity: 0; }
+  25% { transform: scale(1); opacity: 1; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.7); opacity: 0; }
+}
+
+.judge-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 13%;
+  text-align: center;
+  pointer-events: none;
+  z-index: 9;
+  opacity: 0;
+}
+
+.judge-pop.show {
+  animation: judge-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
+}
+
+@keyframes judge-in {
+  0% { opacity: 0; transform: scale(0.4) rotate(-8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-4deg); }
+}
+
+.judge-rank {
+  margin: 0;
+  font-size: clamp(2rem, 11vw, 3rem);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  color: var(--rank-color, #fff);
+  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 0 16px var(--rank-glow, rgba(255, 255, 255, 0.6)), 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.judge-msg {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 2px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rank-perfect { --rank-color: #ffd84d; --rank-glow: rgba(255, 216, 77, 0.9); }
+.rank-good { --rank-color: #6ff0a0; --rank-glow: rgba(111, 240, 160, 0.8); }
+.rank-close { --rank-color: #ffa94d; --rank-glow: rgba(255, 169, 77, 0.8); }
+.rank-miss { --rank-color: #ff6b6b; --rank-glow: rgba(255, 107, 107, 0.8); }
+
+/* =========================================================
+   パネル（開始 / プレイ / 結果）
+   ========================================================= */
+
+.panel {
+  display: none;
+  margin-top: 16px;
+}
+
+[data-state="start"] .panel-start,
+[data-state="countdown"] .panel-play,
+[data-state="play"] .panel-play,
+[data-state="judged"] .panel-play,
+[data-state="result"] .panel-result {
+  display: block;
+  animation: panel-in 0.35s ease;
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.game-title {
+  margin: 0;
+  font-size: clamp(1.7rem, 8.5vw, 2.2rem);
+  line-height: 1.3;
+  text-align: center;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 18px rgba(125, 180, 255, 0.7);
+}
+
+.game-lead {
+  margin: 8px 0 0;
+  text-align: center;
+  color: #cfd6ff;
+  line-height: 1.7;
+}
+
+.game-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 20px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: #e6e9ff;
+  text-align: center;
+}
+
+.game-hint b {
+  color: var(--door-glow);
+}
+
+.hint-door {
+  display: inline-block;
+  width: 12px;
+  height: 18px;
+  background: linear-gradient(#cfd5e0, #aab2c3);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--door-glow), 0 0 10px 2px rgba(255, 216, 77, 0.8);
+}
+
+.btn-go {
+  background: linear-gradient(#ffe27a, var(--go));
+  color: #2a2100;
+  box-shadow: 0 6px 0 var(--go-dark), 0 12px 24px rgba(255, 216, 77, 0.25);
+}
+
+.btn-go:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 var(--go-dark), 0 4px 10px rgba(255, 216, 77, 0.25);
+}
+
+.btn-x {
+  background: #000;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6e9ff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ---- プレイ中 ---- */
+
+.play-status {
+  margin: 0 0 12px;
+  min-height: 1.7em;
+  text-align: center;
+  font-weight: 700;
+  color: #cfd6ff;
+}
+
+.play-status.is-alert {
+  color: var(--door-glow);
+}
+
+.btn-ride {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border: none;
+  border-radius: 28px;
+  background: linear-gradient(#ff7a6b, var(--ride));
+  color: #fff;
+  font-size: 2.2rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 0 var(--ride-dark), 0 14px 30px rgba(255, 90, 78, 0.35);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.06s ease, box-shadow 0.06s ease, filter 0.2s ease;
+}
+
+.btn-ride:focus-visible {
+  outline: 3px solid var(--door-glow);
+  outline-offset: 3px;
+}
+
+.btn-ride.is-pressed,
+.btn-ride:active:not(:disabled) {
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 var(--ride-dark), 0 6px 14px rgba(255, 90, 78, 0.35);
+}
+
+.btn-ride:disabled {
+  filter: grayscale(0.85) brightness(0.65);
+  cursor: default;
+}
+
+[data-state="play"] .btn-ride:not(:disabled) {
+  animation: ride-ready 1s ease-in-out infinite;
+}
+
+@keyframes ride-ready {
+  50% { filter: brightness(1.12); }
+}
+
+/* ---- 結果 ---- */
+
+.result-card {
+  padding: 20px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  text-align: center;
+  backdrop-filter: blur(6px);
+}
+
+.result-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 6.5vw, 1.6rem);
+  font-weight: 800;
+}
+
+.result-rank {
+  margin: 8px 0 0;
+  font-size: clamp(2.2rem, 12vw, 3rem);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1.1;
+  color: var(--rank-color, #fff);
+  text-shadow: 0 0 18px var(--rank-glow, transparent);
+}
+
+.result-score {
+  margin: 4px 0 0;
+  font-size: 3rem;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-score small {
+  margin-left: 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #cfd6ff;
+}
+
+.result-score.bump {
+  animation: bump 0.35s ease;
+}
+
+@keyframes bump {
+  50% { transform: scale(1.18); }
+}
+
+.result-detail {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: #aab3e0;
+}
+
+.result-quip {
+  margin: 8px 0 0;
+  font-weight: 700;
+  color: #e6e9ff;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.result-actions .btn {
+  padding: 14px 24px;
+}
+
+.result-actions [hidden] {
+  display: none;
+}
+
+/* PCでは少しゆったり */
+@media (min-width: 720px) {
+  .train-app {
+    padding-top: 24px;
+  }
+}

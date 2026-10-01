@@ -20,4 +20,13 @@ const GAMES = [
     color: "#2f3e6b",
     href: "games/court/",
   },
+  {
+    id: "train",
+    title: "終電を逃すな",
+    emoji: "🚃",
+    description: "電車のドアが乗車位置に来た瞬間に「乗る！」。終電まであと10秒のタイミングゲーム。",
+    time: "約30秒",
+    color: "#1d2557",
+    href: "games/train/",
+  },
 ];

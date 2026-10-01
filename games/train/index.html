@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1026">
+  <meta name="description" content="終電まであと10秒。電車のドアが乗車位置に来た瞬間に「乗る！」を押すタイミングゲーム。">
+  <title>終電を逃すな｜ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚃</text></svg>">
+  <link rel="stylesheet" href="../../assets/common.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="train-app" id="app" data-state="start">
+    <nav class="site-nav" aria-label="サイト">
+      <a href="../../">← ちょっと暇つぶし。</a>
+    </nav>
+
+    <!-- 駅のステージ -->
+    <div class="stage" id="stage" aria-hidden="true">
+      <div class="sky">
+        <div class="stars"></div>
+        <div class="moon"></div>
+        <div class="city">
+          <span style="--h:46%;--w:13%;--x:0%"></span>
+          <span style="--h:70%;--w:10%;--x:12%"></span>
+          <span style="--h:38%;--w:14%;--x:21%"></span>
+          <span style="--h:86%;--w:8%;--x:34%" class="tower"></span>
+          <span style="--h:52%;--w:15%;--x:41%"></span>
+          <span style="--h:64%;--w:11%;--x:55%"></span>
+          <span style="--h:42%;--w:13%;--x:65%"></span>
+          <span style="--h:76%;--w:10%;--x:77%"></span>
+          <span style="--h:50%;--w:15%;--x:86%"></span>
+        </div>
+      </div>
+
+      <div class="roof">
+        <span class="lamp"></span>
+        <span class="lamp flicker"></span>
+        <span class="lamp"></span>
+      </div>
+
+      <div class="station-sign">
+        <p class="sign-name">ひまつぶし</p>
+        <p class="sign-roman">HIMATSUBUSHI</p>
+        <p class="sign-next"><span>← くだらない</span><span>ちょっと →</span></p>
+      </div>
+
+      <div class="departure">
+        <p class="dep-row"><span class="dep-label">終電</span><span>0:00</span><span>ひまつぶし行</span></p>
+        <p class="dep-row dep-time"><span id="time-label">まもなく</span></p>
+      </div>
+
+      <div class="track">
+        <div class="rails"></div>
+        <div class="train" id="train">
+          <div class="beam"></div>
+          <div class="car car-front">
+            <span class="headlight"></span>
+            <span class="window cab"></span>
+            <span class="door target" id="door-target"><i class="leaf l"></i><i class="leaf r"></i></span>
+            <span class="window"></span>
+            <span class="door"></span>
+            <span class="stripe"></span>
+            <span class="bogie b1"></span><span class="bogie b2"></span>
+          </div>
+          <div class="car">
+            <span class="door"></span>
+            <span class="window"></span>
+            <span class="door"></span>
+            <span class="window"></span>
+            <span class="door"></span>
+            <span class="stripe"></span>
+            <span class="bogie b1"></span><span class="bogie b2"></span>
+          </div>
+          <div class="car car-rear">
+            <span class="door"></span>
+            <span class="window"></span>
+            <span class="door"></span>
+            <span class="window"></span>
+            <span class="taillight"></span>
+            <span class="stripe"></span>
+            <span class="bogie b1"></span><span class="bogie b2"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="platform">
+        <div class="tactile"></div>
+        <div class="marker" id="marker"><span class="marker-arrow">▼</span><span class="marker-label">乗車位置</span></div>
+      </div>
+
+      <div class="flash"></div>
+      <div class="particles" id="particles"></div>
+      <p class="countdown" id="countdown"></p>
+      <div class="judge-pop" id="judge-pop">
+        <p class="judge-rank" id="judge-rank"></p>
+        <p class="judge-msg" id="judge-msg"></p>
+      </div>
+    </div>
+
+    <!-- 開始 -->
+    <section class="panel panel-start" aria-labelledby="game-title">
+      <h1 id="game-title" class="game-title"><span aria-hidden="true">🚃</span> 終電を逃すな</h1>
+      <p class="game-lead">終電まであと10秒。<br>タイミングよく『乗る！』を押せ。</p>
+      <p class="game-hint"><span class="hint-door"></span>光るドアが <b>▲乗車位置</b> に来た瞬間に押そう</p>
+      <button id="btn-start" class="btn btn-go" type="button">ゲームスタート</button>
+    </section>
+
+    <!-- プレイ中 -->
+    <section class="panel panel-play">
+      <p class="play-status" id="play-status" role="status">まもなく発車…</p>
+      <button id="btn-ride" class="btn-ride" type="button" disabled>乗る！</button>
+    </section>
+
+    <!-- 結果 -->
+    <section class="panel panel-result" aria-live="polite">
+      <div class="result-card" id="result-card">
+        <p class="result-title" id="result-title"></p>
+        <p class="result-rank" id="result-rank"></p>
+        <p class="result-score"><span id="result-score">0</span><small>点</small></p>
+        <p class="result-detail" id="result-detail"></p>
+        <p class="result-quip" id="result-quip"></p>
+      </div>
+      <div class="result-actions">
+        <button id="btn-retry" class="btn btn-go" type="button">もう一回遊ぶ</button>
+        <a id="btn-share-x" class="btn btn-x" href="#" target="_blank" rel="noopener">𝕏 結果をシェア</a>
+        <button id="btn-share-native" class="btn btn-ghost" type="button" hidden>ほかのアプリでシェア</button>
+        <a class="btn btn-ghost" href="../../">ほかのゲームで遊ぶ</a>
+      </div>
+    </section>
+
+    <p id="share-toast" class="toast" role="status"></p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
