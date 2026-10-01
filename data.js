@@ -77,103 +77,103 @@ const TOWNS = {
 };
 
 // 街ごとの価値観（選択肢の配点の根拠。名物ではなく「行動のクセ」で振り分ける）
-//   下北沢: 好きなものに一直線、ノリと寄り道、お金より体験
-//   代官山: 自分の美意識、静かな上質さ、人との適度な距離
-//   浅草  : 人情と顔なじみ、巻き込み力、ノリのいいおせっかい
-//   渋谷  : スピードと刺激、人の多さで燃える、新しいもの優先
-//   吉祥寺: 無理しないバランス、生活圏で完結、現実的
-//   谷根千: マイペース、急がない、小さな発見を楽しむ
-//   丸の内: 段取りと合理性、オンオフの切り替え、確実さ
-//   中目黒: 雰囲気と感性、こだわりの小さな店、ちょっと秘密主義
+//   下北沢: 好きなものに一直線、ノリと勢い、お金より体験
+//   代官山: 自分の美意識、丁寧さ、身近な人と落ち着いて過ごす
+//   浅草  : 人とのつながり、誰かと一緒が楽しい、王道を楽しめる
+//   渋谷  : スピードと刺激、新しいもの・情報が好き、すぐ動く
+//   吉祥寺: 無理しないバランス、現実的、まわりに合わせられる
+//   谷根千: マイペース、急がない、なじみの場所と小さな発見
+//   丸の内: 段取りと合理性、用事を先に片付ける、確実さ
+//   中目黒: 雰囲気と感性、お店選びへのこだわり、寄り道好き
 const QUESTIONS = [
   {
-    text: "土曜の朝、今日の予定がドタキャンされた。",
+    text: "土曜日の予定が、突然なくなった。どうする？",
     options: [
-      { emoji: "🛌", label: "「よし」と言って二度寝。起きてから考える", scores: { yanaka: 2, kichijoji: 1 } },
-      { emoji: "📱", label: "すぐ「今日ヒマな人〜？」と送る", scores: { shibuya: 2, asakusa: 1 } },
-      { emoji: "🚶", label: "行くはずだった店に一人で行く。むしろ快適", scores: { daikanyama: 2, nakameguro: 1 } },
-      { emoji: "🚃", label: "とりあえず電車に乗って、気になった駅で降りる", scores: { shimokitazawa: 2, yanaka: 1 } },
+      { emoji: "📍", label: "前から気になっていた店や場所に行ってみる", scores: { nakameguro: 2, daikanyama: 1 } },
+      { emoji: "🧺", label: "家でたまっていた用事を片付ける", scores: { marunouchi: 2, kichijoji: 1 } },
+      { emoji: "📱", label: "誰かに連絡して、別の予定を作る", scores: { shibuya: 2, asakusa: 1 } },
+      { emoji: "💭", label: "特に決めず、その日の気分で過ごす", scores: { yanaka: 2, shimokitazawa: 1 } },
     ],
   },
   {
-    text: "金曜19時、仕事が終わった。",
+    text: "金曜日の夜。仕事や学校が終わった。",
     options: [
-      { emoji: "🏃", label: "まっすぐ帰る。家に着くまでが最高の時間", scores: { daikanyama: 2, kichijoji: 1 } },
-      { emoji: "🍶", label: "行きつけに顔を出す。「いつもの」で通じる店がある", scores: { asakusa: 2, shimokitazawa: 1 } },
-      { emoji: "📅", label: "前から予約しておいた店へ。金曜は決めてある", scores: { nakameguro: 2, marunouchi: 1 } },
-      { emoji: "👀", label: "誰かから「今どこ？」が来るのを待つ（来たら行く）", scores: { shibuya: 2, shimokitazawa: 1 } },
+      { emoji: "🏠", label: "まっすぐ帰って、家でゆっくりする", scores: { kichijoji: 2, yanaka: 1 } },
+      { emoji: "🍝", label: "家族や恋人と、ごはんを食べる", scores: { daikanyama: 2, nakameguro: 1 } },
+      { emoji: "🍺", label: "同僚や友だちと軽く一杯（一杯で終わるとは言ってない）", scores: { asakusa: 2, shimokitazawa: 1 } },
+      { emoji: "👀", label: "ちょっと寄り道して、お店をのぞいてから帰る", scores: { nakameguro: 2, shibuya: 1 } },
     ],
   },
   {
-    text: "初めて降りた駅。まず何をする？",
+    text: "初めて来た街で、30分ほど時間が空いた。",
     options: [
-      { emoji: "🏮", label: "商店街を端から端まで歩いてみる", scores: { yanaka: 2, asakusa: 1 } },
-      { emoji: "⭐", label: "地図アプリで評価4.0以上の店を探す", scores: { marunouchi: 2, shibuya: 1 } },
-      { emoji: "🐾", label: "なんとなく気になる路地に吸い込まれる", scores: { shimokitazawa: 2, nakameguro: 1 } },
-      { emoji: "🍔", label: "駅前の知ってるチェーン店で、一旦落ち着く", scores: { kichijoji: 2, marunouchi: 1 } },
+      { emoji: "🔍", label: "地図アプリで、近くの評判のいい店を探す", scores: { nakameguro: 2, marunouchi: 1 } },
+      { emoji: "🚶", label: "気になった道を、なんとなく歩いてみる", scores: { yanaka: 2, shimokitazawa: 1 } },
+      { emoji: "☕", label: "入りやすそうなカフェで、ひと休みする", scores: { kichijoji: 2, daikanyama: 1 } },
+      { emoji: "🏬", label: "駅ビルや大きなお店を、ぶらっと見て回る", scores: { shibuya: 2, marunouchi: 1 } },
     ],
   },
   {
-    text: "友だちの友だち（初対面）が飲み会に合流してきた。",
+    text: "友だちと遊ぶ予定を立てるとき、あなたは？",
     options: [
-      { emoji: "🍻", label: "30分後には昔からの友だちみたいになってる", scores: { asakusa: 2, shibuya: 1 } },
-      { emoji: "🧐", label: "相手の服や持ち物が気になって、そこから話しかける", scores: { nakameguro: 2, daikanyama: 1 } },
-      { emoji: "🙂", label: "様子を見つつ、聞き役にまわる", scores: { kichijoji: 2, daikanyama: 1 } },
-      { emoji: "🔋", label: "楽しい。でも帰り道に一人反省会をする", scores: { daikanyama: 2, yanaka: 1 } },
+      { emoji: "💡", label: "行きたい店や場所の候補を出す", scores: { nakameguro: 2, shibuya: 1 } },
+      { emoji: "📅", label: "日にちや集合場所をまとめる", scores: { marunouchi: 2, daikanyama: 1 } },
+      { emoji: "👌", label: "決まったことに合わせる。どこでも楽しめる", scores: { kichijoji: 2, asakusa: 1 } },
+      { emoji: "🎲", label: "とりあえず集まって、その場で決めたい", scores: { shimokitazawa: 2, asakusa: 1 } },
     ],
   },
   {
-    text: "誰にも邪魔されない、一人の休日。",
+    text: "家族や地元の友だちが、東京に遊びに来た。",
     options: [
-      { emoji: "📚", label: "開店直後の空いた本屋や美術館を独り占め", scores: { daikanyama: 2, marunouchi: 1 } },
-      { emoji: "💿", label: "中古レコード屋か古本屋で2時間迷う", scores: { shimokitazawa: 2, yanaka: 1 } },
-      { emoji: "🐈", label: "あてもなく歩く。猫に会えたら今日は勝ち", scores: { yanaka: 2, kichijoji: 1 } },
-      { emoji: "🆕", label: "話題の新スポットへ。一人だと並ぶのも身軽", scores: { shibuya: 2, nakameguro: 1 } },
+      { emoji: "📷", label: "せっかくだから、定番の観光スポットへ", scores: { asakusa: 2, marunouchi: 1 } },
+      { emoji: "🏡", label: "自分がふだん行っている、お気に入りの店へ", scores: { yanaka: 2, nakameguro: 1 } },
+      { emoji: "✨", label: "最近話題になっている、新しい場所へ", scores: { shibuya: 2, nakameguro: 1 } },
+      { emoji: "📝", label: "相手の希望を聞いて、行き方や店を下調べしておく", scores: { daikanyama: 2, marunouchi: 1 } },
     ],
   },
   {
-    text: "東京にいて、いちばん「いいな」と思う瞬間は？",
+    text: "疲れがたまっている、平日の夜。",
     options: [
-      { emoji: "🌃", label: "残業帰り、ビルの窓明かりがきれいに見えたとき", scores: { marunouchi: 2, shibuya: 1 } },
-      { emoji: "🥛", label: "銭湯上がりの夜風に当たっているとき", scores: { asakusa: 2, yanaka: 1 } },
-      { emoji: "🚦", label: "大勢の人と同時に歩き出す、あの一瞬", scores: { shibuya: 2, shimokitazawa: 1 } },
-      { emoji: "🍞", label: "住宅街で、いい匂いの小さな店を見つけたとき", scores: { nakameguro: 2, kichijoji: 1 } },
+      { emoji: "🍜", label: "好きなものを食べて、早めに寝る", scores: { kichijoji: 2, asakusa: 1 } },
+      { emoji: "📞", label: "家族や友だちとしゃべって、スッキリする", scores: { asakusa: 2, shibuya: 1 } },
+      { emoji: "🎮", label: "動画・音楽・ゲームなど、好きなことに没頭する", scores: { shimokitazawa: 2, yanaka: 1 } },
+      { emoji: "🛁", label: "お風呂にゆっくり浸かって、整える", scores: { daikanyama: 2, yanaka: 1 } },
     ],
   },
   {
-    text: "思いがけず、臨時収入が3万円入った。",
+    text: "ちょっとした臨時収入（3万円）が入った。",
     options: [
-      { emoji: "👜", label: "ずっと迷っていた「一生モノ」をついに買う", scores: { daikanyama: 2, marunouchi: 1 } },
-      { emoji: "🎫", label: "ライブか舞台のチケットに消える", scores: { shimokitazawa: 2, asakusa: 1 } },
-      { emoji: "🍖", label: "みんなを誘って焼肉。気づいたら足りてない", scores: { asakusa: 2, shimokitazawa: 1 } },
-      { emoji: "🧻", label: "半分貯金、残りで「ちょっといいトイレットペーパー」", scores: { kichijoji: 2, marunouchi: 1 } },
+      { emoji: "🎁", label: "前から欲しかった物を買う", scores: { daikanyama: 2, nakameguro: 1 } },
+      { emoji: "🍣", label: "家族や友だちと、おいしいものを食べに行く", scores: { asakusa: 2, kichijoji: 1 } },
+      { emoji: "🎫", label: "旅行やライブなど、「体験」に使う", scores: { shimokitazawa: 2, shibuya: 1 } },
+      { emoji: "🐷", label: "ほとんど貯金。少しだけ自分にごほうび", scores: { marunouchi: 2, kichijoji: 1 } },
     ],
   },
   {
-    text: "友だちと旅行。あなたは何係？",
+    text: "電車で30分の移動中。だいたい何してる？",
     options: [
-      { emoji: "📋", label: "しおり係。分単位のスケジュールを作る", scores: { marunouchi: 2, daikanyama: 1 } },
-      { emoji: "📍", label: "「ここ行きたい」と店のリンクだけ大量に送る係", scores: { nakameguro: 2, shibuya: 1 } },
-      { emoji: "🗣", label: "現地のおじちゃんと仲良くなってくる係", scores: { asakusa: 2, shimokitazawa: 1 } },
-      { emoji: "⏰", label: "集合時間にちゃんと来る係（それ以外は任せた）", scores: { kichijoji: 2, yanaka: 1 } },
+      { emoji: "📰", label: "SNSやニュースをチェックしている", scores: { shibuya: 2, shimokitazawa: 1 } },
+      { emoji: "🎧", label: "音楽・動画・ゲームの続きをしている", scores: { shimokitazawa: 2, nakameguro: 1 } },
+      { emoji: "😪", label: "本を読むか、ぼーっとしている（気づいたら寝てる）", scores: { yanaka: 2, daikanyama: 1 } },
+      { emoji: "📧", label: "メールや予定を確認して、用事を片付ける", scores: { marunouchi: 2, daikanyama: 1 } },
     ],
   },
   {
-    text: "すごくいいお店を見つけてしまった。",
+    text: "よく通る道に、知らないお店ができていた。",
     options: [
-      { emoji: "🤫", label: "誰にも教えない。自分だけの場所にする", scores: { nakameguro: 2, daikanyama: 1 } },
-      { emoji: "📸", label: "その場でストーリーに上げる", scores: { shibuya: 2, nakameguro: 1 } },
-      { emoji: "👋", label: "通いつめて、店主に顔を覚えてもらう", scores: { yanaka: 2, asakusa: 1 } },
-      { emoji: "📝", label: "「大事な日に使える店」リストにそっと追加", scores: { marunouchi: 2, kichijoji: 1 } },
+      { emoji: "🚪", label: "気になったら、その日のうちに入ってみる", scores: { shibuya: 2, shimokitazawa: 1 } },
+      { emoji: "⭐", label: "口コミや評判を見てから行くか決める", scores: { daikanyama: 2, marunouchi: 1 } },
+      { emoji: "👫", label: "誰かを誘って、一緒に行ってみる", scores: { asakusa: 2, kichijoji: 1 } },
+      { emoji: "🤔", label: "「気になるな〜」と思いつつ、なかなか入れない", scores: { kichijoji: 2, yanaka: 1 } },
     ],
   },
   {
-    text: "出かけた先で、急に大雨が降ってきた。",
+    text: "出かける予定の日に、雨が降ってきた。",
     options: [
-      { emoji: "☕", label: "近くの喫茶店に入って、止むまで粘る", scores: { yanaka: 2, daikanyama: 1 } },
-      { emoji: "💦", label: "ここまで濡れたらもう楽しい。そのまま歩く", scores: { shimokitazawa: 2, asakusa: 1 } },
-      { emoji: "🚇", label: "地下でつながっている場所に、即ルート変更", scores: { marunouchi: 2, shibuya: 1 } },
-      { emoji: "🏠", label: "帰る。今日はそういう日だったと受け入れる", scores: { kichijoji: 2, nakameguro: 1 } },
+      { emoji: "🌂", label: "気にせず、予定どおり出かける", scores: { shimokitazawa: 2, asakusa: 1 } },
+      { emoji: "🏢", label: "行き先を、屋内で楽しめる場所に変える", scores: { marunouchi: 2, shibuya: 1 } },
+      { emoji: "📺", label: "予定をずらして、今日は家で過ごす", scores: { yanaka: 2, kichijoji: 1 } },
+      { emoji: "☔", label: "雨の日の街の雰囲気も、けっこう好き", scores: { nakameguro: 2, yanaka: 1 } },
     ],
   },
 ];
