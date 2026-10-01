@@ -14,6 +14,13 @@ python3 -m http.server 8000
 # スマホから http://<PCのIPアドレス>:8000 を開く
 ```
 
+## 公開URL（GitHub Pages）
+
+https://tokyomoshimo-svg.github.io/first-web-app/
+
+`master` ブランチのルートにあるファイルがそのまま公開されます。push すると数分で反映されます。
+（`.nojekyll` は、GitHub Pages にファイルを加工させずそのまま配信させるための空ファイルです。）
+
 ## ファイル構成
 
 | ファイル | 内容 |
