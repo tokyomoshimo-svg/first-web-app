@@ -1,29 +1,46 @@
-// ぽよぽよブラスト：ゲームのルール（画面に依存しない。node でもテストできる）
+// ぽよぽよブラスト V2：ゲームのルール（画面に依存しない。node でもテストできる）
+//
+// 1ターンの流れ
+//   1) （しなくてもよい）ぽよかブースターを1つ選んで、最大2マスまでドラッグで動かす（手数は減らない。来た道を戻れば取り消し）
+//   2) 2つ以上つながった同じ色か、ブースターをタップ → 消える（手数 −1）。これが 1 COMBO
+//   3) 落ちて補充されたあと、「動いたぽよ」をふくむ同じ色の4つ以上のかたまりは、自動で消える → +1 COMBO
+//      爆風で巻き込まれたブースターの発動、ブースターの合体でも COMBO が増える
+//   4) 消えるものがなくなったら、そのターンはおしまい（endTurn）
+//
+// COMBO が増えるほど点数の倍率が上がり、連鎖でできるブースターは強くなる（3 COMBO 目からは「チャージ」つき）
 //
 // 盤面 grid[r][c]
 //   undefined … 盤面の外（穴。形を作る）
 //   null      … 空き（このあと上から落ちてくる）
-//   piece     … { id, t, color, dir, hp }
-//     t: "c"（色のぽよ） / "rocket"（dir: "h" 横・"v" 縦） / "bomb" / "disco"（color: 消す色）
+//   piece     … { id, t, color, dir, hp, pow, fixed }
+//     t: "c"（色のぽよ） / "mini"（ぷちボム） / "rocket"（dir: "h" 横・"v" 縦） / "bomb" / "disco"（レインボー。color: 消す色）
 //        "box"（木箱：hp 1〜2。となりで消す・ブースターで壊れる。動かない）
 //        "stone"（石：ブースターでだけ壊れる。動かない）
 //        "balloon"（ふうせん：となりで消す・ブースターで割れる。落ちる）
 //        "gift"（プレゼント：いちばん下まで落とすと回収。壊れない）
+//     pow: 2 なら「チャージ」つきのブースター（ふつうより強い）
 //
-// タップの結果は「いつ・どこで・何が起きたか」の出来事の列（events）で返す。
-// 画面（app.js）は出来事を時間どおりに再生するだけ。盤面そのものは、タップの時点で最後の状態まで進めてある。
+// タップ・連鎖の結果は「いつ・どこで・何が起きたか」の出来事の列（events）で返す。
+// 画面（app.js）は出来事を時間どおりに再生するだけ。盤面そのものは、その時点で最後の状態まで進めてある。
 
 const PopBlast = (() => {
   "use strict";
 
-  const GROUP_MIN = 2; // これ以上つながっていれば消せる
-  const ROCKET_AT = 5; // 5〜6個 → ロケット
-  const BOMB_AT = 7; // 7〜8個 → ボム
-  const DISCO_AT = 9; // 9個以上 → レインボー
-  const BOOSTERS = ["rocket", "bomb", "disco"];
+  const TAP_MIN = 2; // タップで消せる大きさ
+  const CHAIN_MIN = 4; // 落ちたあと、自動で消える大きさ（連鎖）
+  const DRAG_STEPS = 2; // 1ターンに動かせるマス数
+  const CHARGE_AT = 3; // この COMBO 以降の連鎖でできたブースターは「チャージ」つき
+  const BOOSTERS = ["mini", "rocket", "bomb", "disco"];
+  const RANK = { mini: 1, rocket: 2, bomb: 3, disco: 4 };
   const STATIC = ["box", "stone"];
 
   const SCORE = { piece: 20, blast: 30, obstacle: 60, booster: 120, gift: 300, perMove: 250 };
+  // COMBO の倍率：1 → ×1, 2 → ×1.5, 3 → ×2 … 最大 ×5
+  const comboMult = (k) => Math.min(5, 1 + 0.5 * (Math.max(1, k) - 1));
+  // 消えた数 → できるブースター
+  const boosterFor = (n) => (n >= 7 ? "disco" : n >= 6 ? "bomb" : n >= 5 ? "rocket" : n >= 4 ? "mini" : null);
+  // 連鎖で消えたかたまりは、COMBO が進むほど「多く消した」ことにする（3 COMBO 目から +1、5 COMBO 目から +2）
+  const comboBonus = (k) => (k >= 5 ? 2 : k >= 3 ? 1 : 0);
 
   function makeRng(seed) {
     let s = seed >>> 0 || 1;
@@ -39,6 +56,8 @@ const PopBlast = (() => {
 
   const isBooster = (p) => !!p && BOOSTERS.includes(p.t);
   const isStatic = (p) => !!p && STATIC.includes(p.t);
+  const isMovable = (p) => !!p && (p.t === "c" || isBooster(p));
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   class Game {
     constructor(level, seed = 1) {
@@ -50,8 +69,14 @@ const PopBlast = (() => {
       this.moves = level.moves;
       this.movesUsed = 0;
       this.score = 0;
+      this.combo = 0; // いまのターンの COMBO
+      this.maxCombo = 0;
+      this.comboHist = {}; // COMBO 数 → ターン数
+      this.used = { mini: 0, rocket: 0, bomb: 0, disco: 0 };
       this.goals = level.goals.map((g) => ({ ...g, left: g.count }));
       this.giftsLeftToSpawn = level.spawnGifts || 0;
+      this.moved = new Set(); // 直前の落下で動いた（新しく来た）駒の id
+      this.drag = null; // { id, path: [[r, c], ...] }
       this.grid = [];
       for (let r = 0; r < this.rows; r++) {
         const row = [];
@@ -62,8 +87,14 @@ const PopBlast = (() => {
         }
         this.grid.push(row);
       }
-      // 始めから消せるグループが少なすぎないように（序盤の「すぐ分かる」ため）
-      for (let k = 0; k < 30 && this.groupCount() < Math.max(3, (this.rows * this.cols) / 9); k++) this.recolor();
+      // 始めの盤面：4つ以上のかたまりはない（ブースターや連鎖は自分で作る）。消せる所はそこそこある
+      const want = Math.max(3, (this.rows * this.cols) / 8);
+      for (let k = 0; k < 40; k++) {
+        this.breakBig();
+        if (this.groupCount() >= want) break;
+        this.recolor();
+      }
+      this.breakBig();
     }
 
     newPiece(t, extra = {}) {
@@ -79,19 +110,38 @@ const PopBlast = (() => {
         case "S": return this.newPiece("stone", { hp: 1 });
         case "L": return this.newPiece("balloon");
         case "G": return this.newPiece("gift");
-        case "R": return this.newPiece("rocket", { dir: this.rng() < 0.5 ? "h" : "v" });
+        case "M": return this.newPiece("mini");
+        case "R": return this.newPiece("rocket", { dir: "h" });
+        case "V": return this.newPiece("rocket", { dir: "v" });
         case "O": return this.newPiece("bomb");
         case "D": return this.newPiece("disco", { color: this.randomColor() });
         default:
-          if (ch >= "0" && ch <= "4") return this.newPiece("c", { color: +ch });
+          if (ch >= "0" && ch <= "4") return this.newPiece("c", { color: +ch, fixed: true });
           return this.newPiece("c", { color: this.randomColor() });
       }
     }
-    // 色のぽよだけ塗り直す（初期盤面の調整・シャッフル用）
+    // 色のぽよ（決まった色以外）を塗り直す（初期盤面の調整・シャッフル用）
     recolor() {
       this.each((p) => {
-        if (p && p.t === "c") p.color = this.randomColor();
+        if (p && p.t === "c" && !p.fixed) p.color = this.randomColor();
       });
+    }
+    // 4つ以上のかたまりを、色を変えてくずす（決まった色のぽよは変えない）
+    breakBig() {
+      for (let guard = 0; guard < 6; guard++) {
+        let changed = false;
+        this.each((p, r, c) => {
+          if (!p || p.t !== "c" || p.fixed) return;
+          if (this.groupAt(r, c).length < CHAIN_MIN) return;
+          const start = this.randomColor();
+          for (let i = 0; i < this.level.colors; i++) {
+            p.color = (start + i) % this.level.colors;
+            if (this.groupAt(r, c).length < CHAIN_MIN) break;
+          }
+          changed = true;
+        });
+        if (!changed) return;
+      }
     }
 
     inside(r, c) {
@@ -103,6 +153,13 @@ const PopBlast = (() => {
     each(fn) {
       for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) if (this.grid[r][c] !== undefined) fn(this.grid[r][c], r, c);
     }
+    find(id) {
+      for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
+        const p = this.grid[r][c];
+        if (p && p.id === id) return [r, c];
+      }
+      return null;
+    }
 
     // 同じ色でつながっているグループ（色のぽよだけ）
     groupAt(r, c) {
@@ -112,7 +169,7 @@ const PopBlast = (() => {
       const out = [[r, c]];
       for (let i = 0; i < out.length; i++) {
         const [y, x] = out[i];
-        for (const [dy, dx] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        for (const [dy, dx] of DIRS) {
           const q = this.at(y + dy, x + dx);
           const k = (y + dy) * 100 + x + dx;
           if (q && q.t === "c" && q.color === p.color && !seen.has(k)) {
@@ -130,7 +187,7 @@ const PopBlast = (() => {
       const out = [[r, c]];
       for (let i = 0; i < out.length; i++) {
         const [y, x] = out[i];
-        for (const [dy, dx] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        for (const [dy, dx] of DIRS) {
           const k = (y + dy) * 100 + x + dx;
           if (!seen.has(k) && isBooster(this.at(y + dy, x + dx))) {
             seen.add(k);
@@ -147,16 +204,28 @@ const PopBlast = (() => {
         if (!p || p.t !== "c" || seen.has(r * 100 + c)) return;
         const g = this.groupAt(r, c);
         g.forEach(([y, x]) => seen.add(y * 100 + x));
-        if (g.length >= GROUP_MIN) n++;
+        if (g.length >= TAP_MIN) n++;
       });
       return n;
     }
+    // タップできる所があるか、1マス動かせばできるか
     hasMoves() {
       let ok = false;
       this.each((p) => {
         if (isBooster(p)) ok = true;
       });
-      return ok || this.groupCount() > 0;
+      if (ok || this.groupCount() > 0) return true;
+      for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
+        if (!isMovable(this.at(r, c))) continue;
+        for (const [dy, dx] of [[0, 1], [1, 0]]) {
+          if (!isMovable(this.at(r + dy, c + dx))) continue;
+          this.swap(r, c, r + dy, c + dx);
+          const good = this.groupAt(r, c).length >= TAP_MIN || this.groupAt(r + dy, c + dx).length >= TAP_MIN;
+          this.swap(r, c, r + dy, c + dx);
+          if (good) return true;
+        }
+      }
+      return false;
     }
     // どこをタップできるか（ヒント・ボット用）：[{r, c, size, kind}]
     options() {
@@ -165,50 +234,154 @@ const PopBlast = (() => {
       this.each((p, r, c) => {
         if (!p || seen.has(r * 100 + c)) return;
         if (isBooster(p)) {
-          out.push({ r, c, size: this.boosterClusterAt(r, c).length, kind: "booster" });
+          out.push({ r, c, size: this.boosterClusterAt(r, c).length, kind: "booster", t: p.t });
           return;
         }
         if (p.t !== "c") return;
         const g = this.groupAt(r, c);
         g.forEach(([y, x]) => seen.add(y * 100 + x));
-        if (g.length >= GROUP_MIN) out.push({ r, c, size: g.length, kind: "group", color: p.color, cells: g });
+        if (g.length >= TAP_MIN) out.push({ r, c, size: g.length, kind: "group", color: p.color, cells: g });
       });
       return out;
     }
 
+    // ---------- ドラッグ（1ターンに1つの駒を、最大 DRAG_STEPS マス） ----------
+    swap(r1, c1, r2, c2) {
+      const t = this.grid[r1][c1];
+      this.grid[r1][c1] = this.grid[r2][c2];
+      this.grid[r2][c2] = t;
+    }
+    canPick(r, c) {
+      const p = this.at(r, c);
+      if (!isMovable(p)) return false;
+      return !this.drag || this.drag.id === p.id;
+    }
+    pick(r, c) {
+      if (!this.canPick(r, c)) return false;
+      if (!this.drag) this.drag = { id: this.at(r, c).id, path: [[r, c]] };
+      return true;
+    }
+    dragStepsUsed() {
+      return this.drag ? this.drag.path.length - 1 : 0;
+    }
+    // いまドラッグ中の駒を、となりのマス (r2, c2) へ。来た道を戻るのは取り消し（何マスでも戻れる）
+    // 返り値：null（動けない）か { back, a: {id, fr, fc, tr, tc}, b: {id, fr, fc, tr, tc}, used }
+    step(r2, c2) {
+      if (!this.drag) return null;
+      const path = this.drag.path;
+      const [r, c] = path[path.length - 1];
+      if (Math.abs(r - r2) + Math.abs(c - c2) !== 1) return null;
+      const prev = path.length >= 2 ? path[path.length - 2] : null;
+      const back = !!prev && prev[0] === r2 && prev[1] === c2;
+      if (!back && path.length - 1 >= DRAG_STEPS) return null;
+      const q = this.at(r2, c2);
+      if (!isMovable(q)) return null;
+      const p = this.at(r, c);
+      this.swap(r, c, r2, c2);
+      if (back) path.pop();
+      else path.push([r2, c2]);
+      return { back, a: { id: p.id, fr: r, fc: c, tr: r2, tc: c2 }, b: { id: q.id, fr: r2, fc: c2, tr: r, tc: c }, used: path.length - 1 };
+    }
+    // 指を離したとき：1マスも動いていなければ、選びなおせる
+    release() {
+      if (this.drag && this.drag.path.length <= 1) this.drag = null;
+    }
+
     // ---------- タップ ----------
-    // 返り値：null（消せない）か { kind, events, gain, created }
+    // 返り値：null（消せない）か { kind, events, gain, duration, combo, ... }
     tap(r, c, { free = false } = {}) {
       const p = this.at(r, c);
-      if (!p || this.moves <= 0 && !free) return null;
+      if (!p || (this.moves <= 0 && !free)) return null;
       let res = null;
       if (p.t === "c") {
         const g = this.groupAt(r, c);
-        if (g.length < GROUP_MIN) return null;
-        res = this.resolveGroup(r, c, g);
+        if (g.length < TAP_MIN) return null;
+        this.combo = 0;
+        res = this.resolveGroups([{ cells: g, pivot: [r, c] }], true);
       } else if (isBooster(p)) {
+        this.combo = 0;
         res = this.resolveBooster(r, c);
       } else return null;
       if (!free) {
         this.moves--;
         this.movesUsed++;
       }
+      this.drag = null;
+      this.moved = new Set();
       this.score += res.gain;
       return res;
     }
 
-    // 出来事を集める入れ物
-    startResolve() {
-      return { events: [], gone: new Set(), hitBy: new Map(), gain: 0, triggered: new Set(), queue: [] };
+    // 落ちたあとの自動消去（連鎖）。消えるものがなければ null
+    cascade() {
+      const seen = new Set();
+      const groups = [];
+      this.each((p, r, c) => {
+        if (!p || p.t !== "c" || !this.moved.has(p.id) || seen.has(r * 100 + c)) return;
+        const g = this.groupAt(r, c);
+        g.forEach(([y, x]) => seen.add(y * 100 + x));
+        if (g.length < CHAIN_MIN) return;
+        // ブースターができる場所：動いてきたぽよのうち、いちばん下（同じなら左）
+        let pivot = null;
+        for (const [y, x] of g) {
+          if (!this.moved.has(this.grid[y][x].id)) continue;
+          if (!pivot || y > pivot[0] || (y === pivot[0] && x < pivot[1])) pivot = [y, x];
+        }
+        groups.push({ cells: g, pivot });
+      });
+      this.moved = new Set();
+      if (!groups.length) return null;
+      const res = this.resolveGroups(groups, false);
+      this.score += res.gain;
+      return res;
     }
-    addGoal(type, color) {
+
+    // ターンのおしまい：COMBO の記録・COMBO の目標
+    endTurn() {
+      const k = this.combo;
+      this.combo = 0;
+      if (k > 0) {
+        this.maxCombo = Math.max(this.maxCombo, k);
+        this.comboHist[k] = (this.comboHist[k] || 0) + 1;
+      }
+      const done = [];
       for (const g of this.goals) {
-        if (g.left > 0 && g.type === type && (type !== "color" || g.color === color)) {
+        if (g.type === "combo" && g.left > 0 && k >= g.min) {
+          g.left--;
+          done.push(g);
+        }
+      }
+      // あと1 COMBO で届いた目標（「惜しい！」の表示用）
+      const near = this.goals.find((g) => g.type === "combo" && g.left > 0 && k === g.min - 1);
+      return { combo: k, goals: done, near: near ? near.min : 0 };
+    }
+
+    // 出来事を集める入れ物。新しい「波」なので COMBO +1
+    startResolve() {
+      this.combo++;
+      const R = { events: [], gone: new Set(), hitBy: new Map(), gain: 0, triggered: new Set(), queue: [], comboStart: this.combo };
+      R.events.push({ t: 0, type: "combo", n: this.combo, mult: comboMult(this.combo) });
+      return R;
+    }
+    addCombo(R, t) {
+      this.combo++;
+      R.events.push({ t, type: "combo", n: this.combo, mult: comboMult(this.combo), chain: true });
+    }
+    pts(n) {
+      return Math.round(n * comboMult(this.combo));
+    }
+    addGoal(type, key) {
+      for (const g of this.goals) {
+        if (g.left > 0 && g.type === type && (type !== "color" || g.color === key) && (type !== "use" || g.booster === key || g.booster === "any")) {
           g.left--;
           return g;
         }
       }
       return null;
+    }
+    useBooster(p) {
+      this.used[p.t] = (this.used[p.t] || 0) + 1;
+      return this.addGoal("use", p.t);
     }
     // マスを1つ消す（または壊す）。src は「同じ爆発で同じ障害物を2回たたかない」ための印
     hit(R, r, c, t, src, by) {
@@ -227,116 +400,133 @@ const PopBlast = (() => {
         p.hp--;
         if (p.hp > 0) {
           R.events.push({ t, type: "hit", r, c, id: p.id, piece: { ...p } });
-          R.gain += 10;
+          R.gain += this.pts(10);
           return;
         }
         R.gone.add(key);
         this.grid[r][c] = null;
         R.events.push({ t, type: "pop", r, c, id: p.id, piece: p, by, goal: this.addGoal(p.t) });
-        R.gain += SCORE.obstacle;
+        R.gain += this.pts(SCORE.obstacle);
         return;
       }
       if (isBooster(p)) {
-        // 爆発に巻き込まれたブースターは、少し遅れて自分も発動（連鎖）
+        // 爆発に巻き込まれたブースターは、少し遅れて自分も発動（連鎖。COMBO +1）
         if (R.triggered.has(p.id)) return;
         R.triggered.add(p.id);
         R.gone.add(key);
         this.grid[r][c] = null;
-        R.events.push({ t, type: "pop", r, c, id: p.id, piece: p, by, chain: true });
-        R.gain += SCORE.booster;
-        R.queue.push({ t: t + 0.09, r, c, kind: p.t, dir: p.dir, color: p.color, chain: true });
+        R.events.push({ t, type: "pop", r, c, id: p.id, piece: p, by, chain: true, goal: this.useBooster(p) });
+        R.gain += this.pts(SCORE.booster);
+        R.queue.push({ t: t + 0.1, r, c, kind: p.t, dir: p.dir, color: p.color, pow: p.pow || 1, chain: true });
         return;
       }
       R.gone.add(key);
       this.grid[r][c] = null;
       const goal = p.t === "balloon" ? this.addGoal("balloon") : this.addGoal("color", p.color);
       R.events.push({ t, type: "pop", r, c, id: p.id, piece: p, by, goal });
-      R.gain += p.t === "balloon" ? SCORE.obstacle : by === "group" ? SCORE.piece : SCORE.blast;
+      R.gain += this.pts(p.t === "balloon" ? SCORE.obstacle : by === "group" ? SCORE.piece : SCORE.blast);
     }
 
-    resolveGroup(r, c, cells) {
+    // 同じ色のかたまりを消す（タップ：1つ / 連鎖：いくつも同時に）
+    resolveGroups(groups, isTap) {
       const R = this.startResolve();
-      const color = this.at(r, c).color;
-      const n = cells.length;
-      const make = n >= DISCO_AT ? "disco" : n >= BOMB_AT ? "bomb" : n >= ROCKET_AT ? "rocket" : null;
-      // タップした所から波のように消える（ブースターを作るときは、タップした所へ集まる）
-      for (const [y, x] of cells) {
-        const d = Math.hypot(y - r, x - c);
-        if (make && y === r && x === c) continue;
-        this.hit(R, y, x, make ? 0 : d * 0.018, "g", "group");
-        if (make) R.events[R.events.length - 1].merge = [r, c];
+      groups = groups.slice().sort((a, b) => b.cells.length - a.cells.length);
+      const made = [];
+      const colors = [];
+      let total = 0;
+      for (const { cells, pivot } of groups) {
+        const [r, c] = pivot;
+        const color = this.at(r, c).color;
+        const n = cells.length;
+        colors.push(color);
+        total += n;
+        // 連鎖の波でブースターになるのは、いちばん大きいかたまり1つだけ（盤面がブースターだらけにならない）
+        const make = isTap ? boosterFor(n) : made.length ? null : boosterFor(n + comboBonus(this.combo));
+        const pow = make && !isTap && this.combo >= CHARGE_AT ? 2 : 1;
+        // タップした所から波のように消える（ブースターを作るときは、その場所へ集まる）
+        for (const [y, x] of cells) {
+          if (make && y === r && x === c) continue;
+          const d = Math.hypot(y - r, x - c);
+          this.hit(R, y, x, make ? 0 : d * 0.018, "g", "group");
+          if (make) R.events[R.events.length - 1].merge = [r, c];
+        }
+        if (make) {
+          const old = this.at(r, c);
+          const piece = this.newPiece(make, make === "rocket" ? { dir: this.rng() < 0.5 ? "h" : "v" } : make === "disco" ? { color } : {});
+          if (pow > 1) piece.pow = pow;
+          this.grid[r][c] = piece;
+          R.gone.add(r * 100 + c);
+          const goal = this.addGoal("color", old.color);
+          R.events.push({ t: 0, type: "pop", r, c, id: old.id, piece: old, by: "group", merge: [r, c], goal });
+          R.events.push({ t: 0.2, type: "spawn", r, c, id: piece.id, piece });
+          R.gain += this.pts(SCORE.piece);
+          made.push({ t: make, pow, r, c });
+        }
+        R.gain += n >= 4 ? this.pts(n * 10) : 0;
       }
-      // となりの木箱・ふうせんにダメージ（1回のタップで1回だけ）
+      // となりの木箱・ふうせんにダメージ（1つの波で1回だけ）
       const near = new Set();
-      for (const [y, x] of cells) {
-        for (const [dy, dx] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const q = this.at(y + dy, x + dx);
-          if (q && (q.t === "box" || q.t === "balloon") && !near.has(q.id)) {
-            near.add(q.id);
-            this.hit(R, y + dy, x + dx, 0.06, "near", "near");
+      for (const { cells } of groups) {
+        for (const [y, x] of cells) {
+          for (const [dy, dx] of DIRS) {
+            const q = this.at(y + dy, x + dx);
+            if (q && (q.t === "box" || q.t === "balloon") && !near.has(q.id)) {
+              near.add(q.id);
+              this.hit(R, y + dy, x + dx, 0.06, "near", "near");
+            }
           }
         }
       }
-      let created = null;
-      if (make) {
-        const old = this.at(r, c);
-        const piece = this.newPiece(make, make === "rocket" ? { dir: this.rng() < 0.5 ? "h" : "v" } : make === "disco" ? { color } : {});
-        this.grid[r][c] = piece;
-        // タップしたマスのぽよも数える（目標）
-        const goal = this.addGoal("color", old.color);
-        R.events.push({ t: 0, type: "pop", r, c, id: old.id, piece: old, by: "group", merge: [r, c], goal });
-        R.events.push({ t: 0.2, type: "spawn", r, c, id: piece.id, piece });
-        R.gain += SCORE.piece;
-        created = make;
-      }
-      R.gain += n >= ROCKET_AT ? n * 10 : 0;
       this.runQueue(R);
-      return this.finish(R, "group", { size: n, created, color });
+      return this.finish(R, isTap ? "group" : "cascade", {
+        size: total,
+        created: made.length ? made[0].t : null,
+        made,
+        groups: groups.map((g) => g.cells),
+        pivot: groups[0].pivot,
+        color: colors[0],
+        colors,
+      });
     }
-
     resolveBooster(r, c) {
       const R = this.startResolve();
       const cluster = this.boosterClusterAt(r, c);
       const pieces = cluster.map(([y, x]) => this.at(y, x));
       for (const p of pieces) R.triggered.add(p.id);
-      // かたまりのブースターは、タップした所へ集まって合体
+      // かたまりのブースターは、タップした所へ集まって合体（1つ増えるごとに COMBO +1）
       for (const [y, x] of cluster) {
         const p = this.at(y, x);
         R.gone.add(y * 100 + x);
         this.grid[y][x] = null;
-        R.events.push({ t: 0, type: "pop", r: y, c: x, id: p.id, piece: p, by: "booster", merge: cluster.length > 1 ? [r, c] : null });
+        R.events.push({ t: 0, type: "pop", r: y, c: x, id: p.id, piece: p, by: "booster", merge: cluster.length > 1 ? [r, c] : null, goal: this.useBooster(p) });
       }
-      const kinds = pieces.map((p) => p.t);
-      const count = (k) => kinds.filter((x) => x === k).length;
-      const t0 = cluster.length > 1 ? 0.22 : 0;
-      let combo = null;
       const tapped = pieces[0];
-      const discoColor = (pieces.find((p) => p.t === "disco") || {}).color;
+      let fusion = null;
+      const t0 = cluster.length > 1 ? 0.22 : 0;
       if (cluster.length === 1) {
-        R.queue.push({ t: 0, r, c, kind: tapped.t, dir: tapped.dir, color: tapped.color });
-      } else if (count("disco") >= 2) {
-        combo = "disco+disco";
-        R.queue.push({ t: t0, r, c, kind: "all" });
-      } else if (count("disco") === 1 && count("bomb") >= 1) {
-        combo = "disco+bomb";
-        R.queue.push({ t: t0, r, c, kind: "discoTo", into: "bomb", color: discoColor });
-      } else if (count("disco") === 1 && count("rocket") >= 1) {
-        combo = "disco+rocket";
-        R.queue.push({ t: t0, r, c, kind: "discoTo", into: "rocket", color: discoColor });
-      } else if (count("bomb") >= 2) {
-        combo = "bomb+bomb";
-        R.queue.push({ t: t0, r, c, kind: "bigbomb" });
-      } else if (count("bomb") >= 1 && count("rocket") >= 1) {
-        combo = "rocket+bomb";
-        R.queue.push({ t: t0, r, c, kind: "megarocket" });
+        R.queue.push({ t: 0, r, c, kind: tapped.t, dir: tapped.dir, color: tapped.color, pow: tapped.pow || 1 });
       } else {
-        combo = "rocket+rocket";
-        R.queue.push({ t: t0, r, c, kind: "cross" });
+        for (let i = 1; i < cluster.length; i++) this.addCombo(R, t0 + i * 0.02);
+        const sorted = pieces.slice().sort((a, b) => RANK[b.t] - RANK[a.t]);
+        const [a, b] = sorted;
+        const disco = pieces.find((p) => p.t === "disco");
+        const key = a.t + "+" + b.t;
+        const charged = pieces.some((p) => p.pow > 1);
+        if (key === "disco+disco") fusion = { kind: "all" };
+        else if (a.t === "disco") fusion = { kind: "discoTo", into: b.t, color: disco.color };
+        else if (key === "bomb+bomb") fusion = { kind: "blast", radius: 4.2, big: true };
+        else if (key === "bomb+rocket") fusion = { kind: "megarocket" };
+        else if (key === "bomb+mini") fusion = { kind: "blast", radius: 3.5, big: true };
+        else if (key === "rocket+rocket") fusion = { kind: "cross" };
+        else if (key === "rocket+mini") fusion = { kind: "rocket", dir: a.dir, pow: 2 };
+        else fusion = { kind: "blast", radius: 2.5 }; // ぷちボム＋ぷちボム
+        if (charged && fusion.kind === "blast") fusion.radius += 0.8;
+        R.events.push({ t: 0, type: "fusion", r, c, fusion: key, count: cluster.length, goal: this.addGoal("fusion") });
+        R.queue.push({ t: t0, r, c, dir: tapped.dir, ...fusion });
       }
-      if (combo) R.events.push({ t: 0, type: "combo", r, c, combo, count: cluster.length });
-      R.gain += SCORE.booster * cluster.length;
+      R.gain += this.pts(SCORE.booster * cluster.length);
       this.runQueue(R);
-      return this.finish(R, cluster.length > 1 ? "combo" : "booster", { combo, size: cluster.length });
+      return this.finish(R, cluster.length > 1 ? "fusion" : "booster", { fusion: fusion && pieces.length > 1 ? pieces.map((p) => p.t).sort((x, y) => RANK[y] - RANK[x]).slice(0, 2).join("+") : null, size: cluster.length, booster: tapped.t });
     }
 
     // 爆発を時間順に処理（巻き込まれたブースターが次の爆発をキューに足す）
@@ -345,7 +535,10 @@ const PopBlast = (() => {
       while (R.queue.length) {
         R.queue.sort((a, b) => a.t - b.t);
         const a = R.queue.shift();
-        if (a.chain) chain++;
+        if (a.chain) {
+          chain++;
+          if (!a.quiet) this.addCombo(R, a.t);
+        }
         this.activate(R, a);
       }
       R.chain = chain;
@@ -379,13 +572,37 @@ const PopBlast = (() => {
           }
         }
       };
+      const colorTargets = (color) => {
+        const out = [];
+        this.each((p, y, x) => {
+          if (p && p.t === "c" && p.color === color) out.push([y, x]);
+        });
+        return out;
+      };
       switch (a.kind) {
+        case "mini": {
+          const radius = a.pow > 1 ? 2.5 : 1.5;
+          R.events.push({ t, type: "fx", fx: "bomb", r, c, radius, mini: true, big: a.pow > 1 });
+          blast(radius, t);
+          break;
+        }
         case "rocket":
-          R.events.push({ t, type: "fx", fx: "rocket", r, c, dir: a.dir });
-          ray(r, c, a.dir, t);
+          if (a.pow > 1) {
+            // チャージつき：3本まとめて
+            for (const k of [-1, 0, 1]) {
+              const y = a.dir === "h" ? r + k : r;
+              const x = a.dir === "v" ? c + k : c;
+              if (y < 0 || y >= this.rows || x < 0 || x >= this.cols) continue;
+              R.events.push({ t, type: "fx", fx: "rocket", r: y, c: x, dir: a.dir, big: true });
+              ray(y, x, a.dir, t);
+            }
+          } else {
+            R.events.push({ t, type: "fx", fx: "rocket", r, c, dir: a.dir });
+            ray(r, c, a.dir, t);
+          }
           break;
         case "cross":
-          R.events.push({ t, type: "fx", fx: "rocket", r, c, dir: "h" }, { t, type: "fx", fx: "rocket", r, c, dir: "v" });
+          R.events.push({ t, type: "fx", fx: "rocket", r, c, dir: "h", big: true }, { t, type: "fx", fx: "rocket", r, c, dir: "v", big: true });
           ray(r, c, "h", t);
           ray(r, c, "v", t);
           break;
@@ -401,33 +618,34 @@ const PopBlast = (() => {
             }
           }
           break;
-        case "bomb":
-          R.events.push({ t, type: "fx", fx: "bomb", r, c, radius: 2 });
-          blast(2, t);
+        case "bomb": {
+          const radius = a.pow > 1 ? 3.5 : 2.5;
+          R.events.push({ t, type: "fx", fx: "bomb", r, c, radius, big: a.pow > 1 });
+          blast(radius, t);
           break;
-        case "bigbomb":
-          R.events.push({ t, type: "fx", fx: "bomb", r, c, radius: 3.4, big: true });
-          blast(3.4, t);
+        }
+        case "blast":
+          R.events.push({ t, type: "fx", fx: "bomb", r, c, radius: a.radius, big: !!a.big || a.radius > 3 });
+          blast(a.radius, t);
           break;
         case "disco": {
-          // その色のぽよを全部消す（色が盤面にないときは、いちばん多い色）
+          // その色のぽよを全部消す（チャージつきは2色）。色が盤面にないときは、いちばん多い色
           const color = this.pickDiscoColor(a.color);
-          const targets = [];
-          this.each((p, y, x) => {
-            if (p && p.t === "c" && p.color === color) targets.push([y, x]);
-          });
-          R.events.push({ t, type: "fx", fx: "disco", r, c, color, targets });
+          let targets = colorTargets(color);
+          let color2 = null;
+          if (a.pow > 1) {
+            color2 = this.pickDiscoColor(undefined, color);
+            if (color2 !== null) targets = targets.concat(colorTargets(color2));
+          }
+          R.events.push({ t, type: "fx", fx: "disco", r, c, color, color2, targets });
           this.hit(R, r, c, t, src, "blast");
-          targets.forEach(([y, x], i) => this.hit(R, y, x, t + 0.12 + i * 0.018, src, "blast"));
+          targets.forEach(([y, x], i) => this.hit(R, y, x, t + 0.12 + i * 0.016, src, "blast"));
           break;
         }
         case "discoTo": {
-          // レインボー＋ロケット/ボム：その色のぽよが全部ロケット（ボム）に変わって、順に発動
+          // レインボー＋ほかのブースター：その色のぽよが全部そのブースターに変わって、順に発動
           const color = this.pickDiscoColor(a.color);
-          const targets = [];
-          this.each((p, y, x) => {
-            if (p && p.t === "c" && p.color === color) targets.push([y, x]);
-          });
+          const targets = colorTargets(color);
           R.events.push({ t, type: "fx", fx: "disco", r, c, color, targets, into: a.into });
           targets.forEach(([y, x], i) => {
             const p = this.at(y, x);
@@ -445,7 +663,7 @@ const PopBlast = (() => {
             R.gone.add(y * 100 + x);
             this.grid[y][x] = null;
             R.events.push({ t: start + i * 0.06, type: "pop", r: y, c: x, id: nb.id, piece: nb, by: "blast", chain: true });
-            R.queue.push({ t: start + i * 0.06, r: y, c: x, kind: a.into, dir: nb.dir, chain: true });
+            R.queue.push({ t: start + i * 0.06, r: y, c: x, kind: a.into, dir: nb.dir, pow: 1, chain: true, quiet: true });
           });
           break;
         }
@@ -457,28 +675,30 @@ const PopBlast = (() => {
       }
     }
 
-    pickDiscoColor(color) {
+    // レインボーで消す色（その色がないときは、いちばん多い色。not は除く）
+    pickDiscoColor(color, not = null) {
       const counts = new Array(this.level.colors).fill(0);
       this.each((p) => {
         if (p && p.t === "c") counts[p.color]++;
       });
-      if (color !== undefined && counts[color] > 0) return color;
-      let best = 0;
+      if (color !== undefined && color !== not && counts[color] > 0) return color;
+      let best = null;
       counts.forEach((n, i) => {
-        if (n > counts[best]) best = i;
+        if (i !== not && n > 0 && (best === null || n > counts[best])) best = i;
       });
-      return best;
+      return best === null ? 0 : best;
     }
 
     finish(R, kind, extra) {
       R.events.sort((a, b) => a.t - b.t);
       const duration = R.events.reduce((m, e) => Math.max(m, e.t), 0);
       const popped = R.events.filter((e) => e.type === "pop").length;
-      return { kind, events: R.events, gain: R.gain, duration, popped, chain: R.chain || 0, ...extra };
+      return { kind, events: R.events, gain: R.gain, duration, popped, chain: R.chain || 0, combo: this.combo, comboStart: R.comboStart, mult: comboMult(this.combo), ...extra };
     }
 
     // ---------- 落下と補充 ----------
     // 返り値：{ moves: [{ id, fr, fc, tr, tc }], spawns: [{ id, piece, tr, tc, from }], collected: [{ id, r, c, piece }] }
+    // 動いた・新しく来た駒は this.moved に記録（次の cascade() で使う）
     collapse() {
       const moves = [];
       const spawns = [];
@@ -507,7 +727,10 @@ const PopBlast = (() => {
             for (let i = items.length - 1; i >= 0; i--, k--) {
               const { p, fr } = items[i];
               const tr = rows[k];
-              if (fr !== tr) moves.push({ id: p.id, fr, fc: c, tr, tc: c });
+              if (fr !== tr) {
+                moves.push({ id: p.id, fr, fc: c, tr, tc: c });
+                this.moved.add(p.id);
+              }
               this.grid[tr][c] = p;
             }
             // 上の空きを埋める（開いている区間だけ）
@@ -517,6 +740,7 @@ const PopBlast = (() => {
               for (let j = empty - 1, n = 0; j >= 0; j--, n++) {
                 const p = this.spawnPiece();
                 this.grid[rows[j]][c] = p;
+                this.moved.add(p.id);
                 spawns.push({ id: p.id, piece: p, tr: rows[j], tc: c, from: -1 - n });
               }
             }
@@ -540,7 +764,28 @@ const PopBlast = (() => {
         }
         if (!got) break;
       }
+      this.colorSpawns(spawns);
       return { moves, spawns, collected };
+    }
+    // 補充されたぽよの色を決める：新しいぽよが入って4つ以上のかたまりにはならない色を選ぶ
+    // （連鎖は、盤面にあったぽよが落ちてそろったときだけ起きる＝盤面を見れば読める）
+    colorSpawns(spawns) {
+      const list = spawns.filter((s) => s.piece.t === "c" && this.grid[s.tr][s.tc] === s.piece);
+      for (const s of list) s.piece.color = -1;
+      list.sort((a, b) => b.tr - a.tr || a.tc - b.tc);
+      for (const s of list) {
+        const p = s.piece;
+        const start = this.randomColor();
+        let pick = start;
+        for (let i = 0; i < this.level.colors; i++) {
+          p.color = (start + i) % this.level.colors;
+          if (this.groupAt(s.tr, s.tc).length < CHAIN_MIN) {
+            pick = p.color;
+            break;
+          }
+        }
+        p.color = pick;
+      }
     }
     spawnPiece() {
       if (this.giftsLeftToSpawn > 0 && this.rng() < 0.12) {
@@ -553,8 +798,10 @@ const PopBlast = (() => {
 
     // 消せる所がなくなったら、色のぽよだけ並べかえ（色を塗り直す）
     shuffle() {
+      this.drag = null;
       for (let k = 0; k < 40; k++) {
         this.recolor();
+        this.breakBig();
         if (this.groupCount() >= 2) break;
       }
     }
@@ -591,9 +838,23 @@ const PopBlast = (() => {
       const [s2, s3] = this.level.stars;
       return this.score >= s3 ? 3 : this.score >= s2 ? 2 : 1;
     }
+
+    // ボット・先読み用の複製（補充の乱数は別にする＝未来は見えない）
+    clone(seed) {
+      const g = Object.create(Game.prototype);
+      Object.assign(g, this);
+      g.rng = makeRng(seed);
+      g.grid = this.grid.map((row) => row.map((p) => (p ? { ...p } : p)));
+      g.goals = this.goals.map((x) => ({ ...x }));
+      g.moved = new Set(this.moved);
+      g.drag = this.drag ? { id: this.drag.id, path: this.drag.path.map((x) => x.slice()) } : null;
+      g.comboHist = { ...this.comboHist };
+      g.used = { ...this.used };
+      return g;
+    }
   }
 
-  return { Game, makeRng, isBooster, isStatic, GROUP_MIN, ROCKET_AT, BOMB_AT, DISCO_AT, SCORE };
+  return { Game, makeRng, isBooster, isStatic, isMovable, boosterFor, comboMult, comboBonus, TAP_MIN, CHAIN_MIN, DRAG_STEPS, CHARGE_AT, SCORE, RANK };
 })();
 
 if (typeof module !== "undefined") module.exports = PopBlast;

@@ -60,7 +60,7 @@ const GAMES = [
     id: "blast",
     title: "ぽよぽよブラスト",
     emoji: "🫧",
-    description: "同じ色のぽよをタップして消すパズル。ロケット・ボム・レインボーで、まとめて吹き飛ばせ。全10ステージ。",
+    description: "ぽよを1つ動かして連鎖を仕込み、タップで消してCOMBOをつなげるパズル。連鎖が続くほど派手に強く。全12ステージ。",
     time: "1ステージ約2分",
     color: "#7b5cff",
     href: "games/blast/",

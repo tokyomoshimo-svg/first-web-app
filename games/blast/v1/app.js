@@ -1,9 +1,8 @@
-// ぽよぽよブラスト V2：画面・アニメーション・音・入力
+// ぽよぽよブラスト：画面・アニメーション・音・入力
 //
-// ・1ターン：（しなくてもよい）ぽよを1つドラッグで2マスまで動かす → タップで消す → 落下 → 連鎖（自動で消える）…
 // ・盤面は canvas に描く。ぽよやブースターの絵は、最初に1回だけ描いておき（キャッシュ）、毎フレームは貼るだけ
-// ・タップ・連鎖の結果（engine.js の出来事の列）を、時間どおりに再生する。COMBO が続くほどテンポが速くなる
-// ・COMBO の大きな表示・目標アイコンへ飛ぶぽよ・ほめ言葉・紙ふぶきは、画面全体を覆う「演出用 canvas」に描く
+// ・タップの結果（engine.js の出来事の列）を、時間どおりに再生する
+// ・目標アイコンへ飛んでいくぽよ・ほめ言葉・紙ふぶきは、画面全体を覆う「演出用 canvas」に描く
 
 (() => {
   "use strict";
@@ -20,14 +19,12 @@
   Object.assign(fxCanvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", pointerEvents: "none", zIndex: "10" });
   app.appendChild(fxCanvas);
   const fctx = fxCanvas.getContext("2d");
-  // テスト用：?seed=123 で盤面を決まった形にできる
-  const URL_SEED = Number(new URLSearchParams(location.search).get("seed")) || 0;
 
   // =========================================================
   // セーブ（端末の中だけ）
   // =========================================================
 
-  const SAVE_KEY = "popoBlastSave.v2";
+  const SAVE_KEY = "popoBlastSave.v1";
   const save = (() => {
     let d = null;
     try {
@@ -35,8 +32,7 @@
     } catch (e) {
       d = null;
     }
-    const base = { unlocked: 1, stars: {}, best: {}, bestCombo: {}, sound: true, seen: {} };
-    return { ...base, ...(d || {}), seen: { ...((d && d.seen) || {}) }, bestCombo: { ...((d && d.bestCombo) || {}) } };
+    return { unlocked: 1, stars: {}, best: {}, sound: true, seenBooster: false, seenCombo: false, ...(d || {}) };
   })();
   function writeSave() {
     try {
@@ -119,18 +115,13 @@
         /* 鳴らなくても続ける */
       }
     },
-    // ドレミ…の音の高さ（COMBO が進むほど上がる）
-    note(i) {
-      const scale = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
-      return 523.25 * Math.pow(2, scale[Math.max(0, Math.min(scale.length - 1, i))] / 12);
-    },
-    pop(n = 1, size = 2) {
+    pop(size = 2) {
       const now = performance.now();
       if (now - this.lastPop < 35) return;
       this.lastPop = now;
-      const f = this.note(n - 1) * (1 + Math.min(size, 12) * 0.006);
-      this.tone(f, 0.13, { type: "sine", vol: 0.22, slide: 1.6 });
-      this.tone(f * 1.5, 0.09, { type: "triangle", vol: 0.08, slide: 1.3, delay: 0.02 });
+      const f = 520 + Math.min(size, 20) * 28;
+      this.tone(f, 0.12, { type: "sine", vol: 0.22, slide: 1.8 });
+      this.tone(f * 1.5, 0.08, { type: "triangle", vol: 0.08, slide: 1.4, delay: 0.02 });
     },
     smallPop() {
       const now = performance.now();
@@ -141,26 +132,8 @@
     invalid() {
       this.tone(170, 0.14, { type: "square", vol: 0.06, slide: 0.7 });
     },
-    press() {
-      this.tone(640, 0.04, { type: "sine", vol: 0.06, slide: 1.2 });
-    },
-    lift() {
-      this.tone(520, 0.09, { type: "triangle", vol: 0.1, slide: 1.6 });
-    },
-    step(used, back) {
-      this.tone(back ? 520 : 700 + used * 180, 0.06, { type: "triangle", vol: 0.11, slide: back ? 0.8 : 1.25 });
-    },
-    resist() {
-      this.tone(150, 0.1, { type: "square", vol: 0.05, slide: 0.8 });
-    },
-    drop() {
-      this.tone(430, 0.08, { type: "sine", vol: 0.14, slide: 0.7 });
-    },
     create() {
       [660, 880, 1175].forEach((f, i) => this.tone(f, 0.16, { type: "triangle", vol: 0.13, delay: i * 0.05 }));
-    },
-    charge() {
-      [1568, 2093, 2637, 3136].forEach((f, i) => this.tone(f, 0.12, { type: "sine", vol: 0.06, delay: i * 0.04 }));
     },
     rocket() {
       this.noise(0.35, { vol: 0.28, freq: 600, to: 3200, q: 1.2 });
@@ -173,32 +146,9 @@
     disco() {
       [1047, 1319, 1568, 2093, 1568, 2093, 2637].forEach((f, i) => this.tone(f, 0.12, { type: "sine", vol: 0.08, delay: i * 0.045 }));
     },
-    fusion() {
+    combo() {
       [523, 659, 784, 1047].forEach((f) => this.tone(f, 0.45, { type: "triangle", vol: 0.09 }));
       this.noise(0.4, { vol: 0.2, freq: 2000, to: 500 });
-    },
-    // 落ちてそろった！（次の消去の直前の「ため」）
-    anticipate(n) {
-      this.tone(this.note(n) * 0.75, 0.16, { type: "triangle", vol: 0.08, slide: 1.5 });
-    },
-    // NICE! GREAT! … FEVER!
-    tier(n) {
-      const k = Math.min(n, 7);
-      const base = this.note(k);
-      [0, 4, 7, 12, 16].slice(0, Math.min(5, k)).forEach((s, i) => this.tone(base * Math.pow(2, s / 12), 0.22, { type: "triangle", vol: 0.08 + k * 0.006, delay: i * 0.04 }));
-      if (k >= 5) this.noise(0.35, { vol: 0.12, freq: 3000, to: 7000 });
-      if (k >= 7) this.tone(base / 2, 0.5, { type: "sawtooth", vol: 0.035, slide: 2 });
-    },
-    // 連鎖がとまった瞬間
-    chainEnd(n) {
-      const base = 392 * Math.pow(2, Math.min(n, 9) / 12);
-      [0, 4, 7, 12].forEach((s, i) => this.tone(base * Math.pow(2, s / 12), 0.55, { type: "triangle", vol: 0.07 + 0.01 * Math.min(n, 6), delay: i * 0.03 }));
-      if (n >= 5) this.tone(98, 0.6, { type: "sine", vol: 0.3, slide: 0.5 });
-    },
-    // 惜しい！
-    near() {
-      [784, 698, 587].forEach((f, i) => this.tone(f, 0.15, { type: "triangle", vol: 0.1, delay: i * 0.1 }));
-      this.tone(392, 0.32, { type: "sine", vol: 0.09, slide: 1.25, delay: 0.32 });
     },
     goal() {
       this.tone(1320, 0.06, { type: "sine", vol: 0.07, slide: 1.2 });
@@ -646,123 +596,11 @@
     g.fillRect(0.18, 0.46, 0.06, 0.32);
   }
 
-  // ぷちボム（小さくてかわいい爆弾）
-  function drawMini(g) {
-    g.fillStyle = "rgba(30,20,60,0.2)";
-    ellipse(g, 0.5, 0.87, 0.24, 0.045);
-    g.fill();
-    const grad = g.createRadialGradient(0.42, 0.46, 0.03, 0.5, 0.58, 0.32);
-    grad.addColorStop(0, "#fff0d6");
-    grad.addColorStop(0.45, "#ff9f5a");
-    grad.addColorStop(1, "#e0552e");
-    g.fillStyle = grad;
-    ellipse(g, 0.5, 0.59, 0.28, 0.28);
-    g.fill();
-    g.lineWidth = 0.03;
-    g.strokeStyle = "#b8401f";
-    g.stroke();
-    g.fillStyle = "#8a90b8";
-    g.fillRect(0.44, 0.27, 0.12, 0.06);
-    g.strokeStyle = "#c8a36a";
-    g.lineWidth = 0.032;
-    g.lineCap = "round";
-    g.beginPath();
-    g.moveTo(0.5, 0.27);
-    g.quadraticCurveTo(0.54, 0.17, 0.63, 0.18);
-    g.stroke();
-    g.fillStyle = "rgba(255,255,255,0.7)";
-    ellipse(g, 0.4, 0.48, 0.06, 0.035, -0.6);
-    g.fill();
-    g.fillStyle = "#5a2410";
-    ellipse(g, 0.43, 0.6, 0.026, 0.034);
-    g.fill();
-    ellipse(g, 0.57, 0.6, 0.026, 0.034);
-    g.fill();
-    g.strokeStyle = "#5a2410";
-    g.lineWidth = 0.022;
-    g.beginPath();
-    g.arc(0.5, 0.66, 0.032, 0.2, Math.PI - 0.2);
-    g.stroke();
-  }
-
-  // 文字を、キャッシュする絵の上に（絵は 0〜1 の座標で描くので、文字だけ実際の画素で）
-  function spriteText(g, text, x, y, size, color, stroke) {
-    const px = g.canvas.width;
-    g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.font = `900 ${Math.max(6, Math.round(px * size))}px ${FONT()}`;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    if (stroke) {
-      g.lineJoin = "round";
-      g.lineWidth = Math.max(2, px * 0.06);
-      g.strokeStyle = stroke;
-      g.strokeText(text, x * px, y * px);
-    }
-    g.fillStyle = color;
-    g.fillText(text, x * px, y * px);
-    g.restore();
-  }
-
-  // COMBO の目標のバッジ
-  function drawComboBadge(g, n) {
-    g.fillStyle = "rgba(30,20,60,0.2)";
-    ellipse(g, 0.5, 0.9, 0.32, 0.05);
-    g.fill();
-    const grad = g.createLinearGradient(0, 0.08, 0, 0.92);
-    grad.addColorStop(0, "#ffc247");
-    grad.addColorStop(1, "#ff4f8b");
-    star(g, 0.5, 0.49, 0.47, 0.36, 9);
-    g.fillStyle = grad;
-    g.fill();
-    g.lineWidth = 0.035;
-    g.strokeStyle = "#c2185b";
-    g.stroke();
-    spriteText(g, String(n), 0.5, 0.43, 0.42, "#fff", "#c2185b");
-    spriteText(g, "COMBO", 0.5, 0.7, 0.15, "#fff", "#c2185b");
-  }
-
-  // 合体の目標（ロケット＋ボム）
-  function drawFusionIcon(g) {
-    g.save();
-    g.translate(-0.04, 0.12);
-    g.scale(0.66, 0.66);
-    drawRocket(g, "h");
-    g.restore();
-    g.save();
-    g.translate(0.36, 0.22);
-    g.scale(0.62, 0.62);
-    drawBomb(g);
-    g.restore();
-    g.fillStyle = "#ffe36b";
-    star(g, 0.5, 0.3, 0.16, 0.06, 4);
-    g.fill();
-    g.strokeStyle = "#e09a00";
-    g.lineWidth = 0.025;
-    g.stroke();
-  }
-
-  // 「どれかのブースター」の目標
-  function drawAnyBooster(g) {
-    g.save();
-    g.translate(0.05, 0.05);
-    g.scale(0.9, 0.9);
-    drawMini(g);
-    g.restore();
-    g.fillStyle = "#ffe36b";
-    star(g, 0.78, 0.25, 0.14, 0.06, 5);
-    g.fill();
-  }
-
-  const FONT = () => getComputedStyle(document.body).fontFamily;
-
   // 駒の絵（キー：種類・色・向き・hp・まばたき）
   function pieceSprite(p, size, { blink = false, hp } = {}) {
     switch (p.t) {
       case "c":
         return sprite(`c${p.color}${blink ? "b" : ""}`, size, (g) => drawPoyo(g, p.color, blink));
-      case "mini":
-        return sprite("mini", size, drawMini);
       case "rocket":
         return sprite(`r${p.dir}`, size, (g) => drawRocket(g, p.dir));
       case "bomb":
@@ -779,69 +617,27 @@
         return sprite("balloon", size, drawBalloon);
       case "gift":
         return sprite("gift", size, drawGift);
-      case "comboBadge":
-        return sprite(`cb${p.n}`, size, (g) => drawComboBadge(g, p.n));
-      case "fusionIcon":
-        return sprite("fusionIcon", size, drawFusionIcon);
-      case "anyBooster":
-        return sprite("anyBooster", size, drawAnyBooster);
     }
     return null;
   }
 
-  const NAMES = { mini: "ぷちボム", rocket: "ロケット", bomb: "ボム", disco: "レインボー", any: "ブースター" };
-  const FUSION_NAMES = {
-    "rocket+rocket": "クロス！",
-    "bomb+rocket": "メガロケット！",
-    "bomb+bomb": "ビッグボム！",
-    "bomb+mini": "ボム合体！",
-    "rocket+mini": "トリプルロケット！",
-    "mini+mini": "ダブルぷちボム！",
-    "disco+rocket": "レインボー×ロケット！",
-    "disco+bomb": "レインボー×ボム！",
-    "disco+mini": "レインボー×ぷちボム！",
-    "disco+disco": "ぜんぶ消し！",
-  };
-
-  function goalPiece(goal) {
-    switch (goal.type) {
-      case "color": return { t: "c", color: goal.color };
-      case "box": return { t: "box", hp: 1 };
-      case "combo": return { t: "comboBadge", n: goal.min };
-      case "use": return goal.booster === "any" ? { t: "anyBooster" } : { t: goal.booster, dir: "h", color: 0 };
-      case "fusion": return { t: "fusionIcon" };
-      default: return { t: goal.type };
-    }
-  }
-  function goalCaption(goal) {
-    switch (goal.type) {
-      case "color": return `${COLORS[goal.color].name}のぽよ`;
-      case "box": return "木箱";
-      case "stone": return "石";
-      case "balloon": return "ふうせん";
-      case "gift": return "プレゼント";
-      case "combo": return `${goal.min}コンボ以上を${goal.count}回`;
-      case "use": return `${NAMES[goal.booster]}を使う`;
-      case "fusion": return "ブースター合体";
-    }
-    return "";
+  function goalSprite(goal, size) {
+    if (goal.type === "color") return pieceSprite({ t: "c", color: goal.color }, size);
+    if (goal.type === "box") return pieceSprite({ t: "box", hp: 1 }, size);
+    return pieceSprite({ t: goal.type }, size);
   }
 
   // 目標アイコン（HUD・ポップアップ）
   function goalIcon(goal, count) {
     const el = document.createElement("div");
     el.className = "pb-goal";
-    el.dataset.type = goal.type;
     const c = document.createElement("canvas");
     const px = Math.round(52 * DPR());
     c.width = c.height = px;
-    c.getContext("2d").drawImage(pieceSprite(goalPiece(goal), 52), 0, 0, px, px);
+    c.getContext("2d").drawImage(goalSprite(goal, 52), 0, 0, px, px);
     const b = document.createElement("b");
     b.textContent = count;
-    const cap = document.createElement("small");
-    cap.textContent = goalCaption(goal);
-    el.append(c, b, cap);
-    el.setAttribute("aria-label", `${goalCaption(goal)} のこり ${count}`);
+    el.append(c, b);
     return el;
   }
 
@@ -971,8 +767,7 @@
     list.innerHTML = "";
     for (const g of L.goals) list.appendChild(goalIcon(g, g.count));
     $("pb-start-moves").textContent = L.moves;
-    const best = save.bestCombo[id] || 0;
-    $("pb-start-tip").textContent = (L.tip || "") + (best >= 2 ? `（ベスト ${best} COMBO）` : "");
+    $("pb-start-tip").textContent = L.tip || "";
     const s = save.stars[id] || 0;
     $("pb-start-stars").innerHTML = [1, 2, 3].map((k) => `<span class="${k <= s ? "on" : ""}">★</span>`).join("");
     showModal("pb-start");
@@ -1004,37 +799,19 @@
   let flyers = []; // 目標アイコンへ飛ぶぽよ（演出 canvas）
   let confetti = [];
   let timeline = []; // これから起きる出来事（時刻つき）
-  let phase = "idle"; // idle / play / resolve / anticipate / settle / finale / wait / end
+  let phase = "idle"; // idle / play / resolve / settle / finale / end
   let clock = 0; // ゲーム内の時計（秒）。演出の早送りでは速く進む
   let timeScale = 1;
   let shake = 0;
   let lastInput = 0;
   let hintCells = null;
-  let tutorial = null; // { kind: "tap" | "drag", r, c, from, to, text }
+  let tutorial = null; // { r, c, text }
   let goalShown = [];
   let displayScore = 0;
   let continued = false;
   let attempt = 0;
+  let movesShown = 0;
   let lastFlashAt = -10;
-  let inFinale = false;
-  let turnGain = 0; // このターンの合計点
-  let maxComboPlay = 0; // このプレイの最高 COMBO
-  let comboLog = []; // ターンごとの COMBO（テスト用）
-  let hitstop = 0; // 連鎖がとまった瞬間の「ため」（実時間）
-  let paused = false;
-  let gravity = 70;
-  let resolveEnd = 0;
-  let antEnd = 0;
-  let pendingCascade = null;
-  let press = null; // ポインタで押している駒 { pointerId, r, c, id, x0, y0, fx, fy, dragging, blocked }
-  let preview = null; // 押している所の、消える範囲の予告 { cells, label, color }
-  const kb = { on: false, r: 0, c: 0 }; // キーボードのカーソル
-  // いま表示している COMBO
-  const combo = { n: 0, t0: -9, word: "", wordT0: -9, tier: 0, mult: 1, ending: false, endT0: -9, total: 0, near: 0, goalDone: false, show: false };
-  const WORDS = ["", "", "NICE!", "GREAT!", "SUPER!", "AMAZING!", "MIRACLE!", "FEVER!"];
-  const TIER_COLORS = ["#5a3dbf", "#5a3dbf", "#1f8fff", "#21b35a", "#ff9f1a", "#ff6a2b", "#ff2f7a", "#7b5cff"];
-  // COMBO が進むほど、次の消去までが速くなる（1 → 1.0 / 7 → 0.46）
-  const tempo = (n) => Math.max(0.45, 1 - 0.09 * (Math.max(1, n) - 1));
 
   // 盤面の大きさ（CSS px）
   const view = { W: 0, H: 0, cell: 40, x: 0, y: 0, bw: 0, bh: 0 };
@@ -1141,7 +918,7 @@
   function startLevel(id) {
     level = LEVELS[id - 1];
     attempt++;
-    game = new PB.Game(level, URL_SEED ? URL_SEED + attempt * 7919 : (Date.now() & 0xffff) * 31 + attempt);
+    game = new PB.Game(level, (Date.now() & 0xffff) * 31 + attempt);
     sprites = new Map();
     particles = [];
     fx = [];
@@ -1154,18 +931,6 @@
     timeScale = 1;
     hintCells = null;
     tutorial = null;
-    press = null;
-    preview = null;
-    inFinale = false;
-    turnGain = 0;
-    maxComboPlay = 0;
-    comboLog = [];
-    paused = false;
-    hitstop = 0;
-    kb.on = false;
-    kb.r = Math.floor(level.rows / 2);
-    kb.c = Math.floor(level.cols / 2);
-    resetCombo();
     setScreen("game");
     showModal(null);
     $("pb-level-label").textContent = `ステージ ${id}`;
@@ -1195,43 +960,29 @@
         s.t0 = clock + 0.3 + Math.random() * 0.2;
       }
     });
-    gravity = 70;
     phase = "settle";
     lastInput = clock;
-    updateDragBar();
-    const startedAt = attempt;
+    // ひとこと（ステージ1は指でお手本を見せる）
     setTimeout(() => {
-      if (attempt === startedAt) startTutorial();
+      if (level.tutorial) {
+        const best = game.options().filter((o) => o.kind === "group" && o.color === 0).sort((a, b) => b.size - a.size)[0];
+        if (best) tutorial = { r: best.r, c: best.c, text: level.tip };
+      } else if (level.tip) {
+        banner(level.tip, 2.6, "tip");
+      }
     }, 900);
   }
 
-  // 指のお手本（ステージ1：タップ / 2：ドラッグ / 3：連鎖）
-  function startTutorial() {
-    if (!game || app.dataset.screen !== "game") return;
-    const t = level.tutorial;
-    const at = (r, c) => game.at(r, c);
-    if (t === "tap") {
-      const best = game.options().filter((o) => o.kind === "group" && o.color === 0).sort((a, b) => b.size - a.size)[0];
-      if (best) tutorial = { kind: "tap", r: best.r, c: best.c, text: level.tip };
-    } else if (t === "drag" && at(5, 3) && at(5, 3).color === 0 && at(6, 3) && at(6, 3).t === "c") {
-      tutorial = { kind: "drag", from: [5, 3], to: [6, 3], text: "赤をドラッグして、下へ！" };
-    } else if (t === "chain" && game.groupAt(6, 3).length >= 2) {
-      tutorial = { kind: "tap", r: 6, c: 3, text: "ここを消すと、上の赤が落ちて4つそろう！" };
-    } else if (level.tip) {
-      banner(level.tip, 2.8, "tip");
-    }
-  }
-
   function setMoves(n, bump = true) {
+    movesShown = n;
     $("pb-moves").textContent = n;
     const box = $("pb-moves").parentElement;
-    box.classList.toggle("low", n <= 5 && !inFinale);
-    if (bump) bumpEl(box, "bump");
-  }
-  function bumpEl(el, cls) {
-    el.classList.remove(cls);
-    void el.offsetWidth;
-    el.classList.add(cls);
+    box.classList.toggle("low", n <= 5 && phase !== "finale");
+    if (bump) {
+      box.classList.remove("bump");
+      void box.offsetWidth;
+      box.classList.add("bump");
+    }
   }
 
   function updateScoreUi(force) {
@@ -1249,47 +1000,9 @@
     $("pb-score").textContent = Math.round(displayScore).toLocaleString();
   }
 
-  // 盤面の下：このターンに動かせるマス
-  function updateDragBar(bump) {
-    const used = game ? game.dragStepsUsed() : 0;
-    $("pb-dragsteps")
-      .querySelectorAll("i")
-      .forEach((d, i) => d.classList.toggle("used", i < used));
-    $("pb-dragtext").textContent = used === 0 ? "動かせる" : used >= PB.DRAG_STEPS ? "動かした" : `あと${PB.DRAG_STEPS - used}マス`;
-    $("pb-undo").disabled = used === 0 || phase !== "play";
-    if (bump) bumpEl($("pb-dragsteps"), "bump");
-  }
-
   // =========================================================
-  // 入力：押す（すぐ反応）→ 動かせばドラッグ / その場で離せばタップ
+  // 入力
   // =========================================================
-
-  function boardPoint(e) {
-    const b = boardCanvas.getBoundingClientRect();
-    return { x: e.clientX - b.left, y: e.clientY - b.top };
-  }
-  function cellAt(x, y) {
-    const c = Math.floor((x - view.x) / view.cell);
-    const r = Math.floor((y - view.y) / view.cell);
-    return game && game.inside(r, c) ? [r, c] : null;
-  }
-
-  // 押している所の、消える範囲の予告
-  function previewAt(r, c) {
-    const p = game.at(r, c);
-    if (!p) return null;
-    if (p.t === "c") {
-      const cells = game.groupAt(r, c);
-      if (cells.length < PB.TAP_MIN) return null;
-      const make = PB.boosterFor(cells.length);
-      return { cells, label: `${cells.length}こ` + (make ? ` → ${NAMES[make]}` : ""), color: COLORS[p.color].base };
-    }
-    if (PB.isBooster(p)) {
-      const cells = game.boosterClusterAt(r, c);
-      return { cells, label: cells.length > 1 ? "合体！" : NAMES[p.t] + (p.pow > 1 ? "（チャージ）" : ""), color: "#ffb238" };
-    }
-    return null;
-  }
 
   boardCanvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -1298,282 +1011,30 @@
       timeScale = 4; // 演出の早送り
       return;
     }
-    if (phase !== "play" || paused || press) return;
-    const pt = boardPoint(e);
-    const cell = cellAt(pt.x, pt.y);
-    if (!cell) return;
-    const [r, c] = cell;
-    const p = game.at(r, c);
-    if (!p) return;
-    try {
-      boardCanvas.setPointerCapture(e.pointerId);
-    } catch (err) {
-      /* なくても動く */
-    }
-    press = { pointerId: e.pointerId, r, c, id: p.id, x0: pt.x, y0: pt.y, fx: pt.x, fy: pt.y, dragging: false, blocked: false, t0: clock };
-    kb.on = false;
-    lastInput = clock;
-    hintCells = null;
-    preview = previewAt(r, c);
-    Sound.press();
-  });
-
-  boardCanvas.addEventListener("pointermove", (e) => {
-    if (!press || e.pointerId !== press.pointerId || phase !== "play") return;
-    const pt = boardPoint(e);
-    press.fx = pt.x;
-    press.fy = pt.y;
-    if (!press.dragging) {
-      if (press.blocked || Math.hypot(pt.x - press.x0, pt.y - press.y0) < view.cell * 0.32) return;
-      if (!game.pick(press.r, press.c)) {
-        // 動かせない駒（障害物）か、このターンはもう別の駒を動かした
-        press.blocked = true;
-        preview = null;
-        const p = game.at(press.r, press.c);
-        if (p && PB.isMovable(p) && game.drag) {
-          bumpEl($("pb-dragsteps"), "no");
-          banner("動かせるのは1ターンに1つだけ", 1.2, "tip");
-          const other = sprites.get(game.drag.id);
-          if (other) other.wobble = clock;
-        } else {
-          const s = sprites.get(press.id);
-          if (s) s.wobble = clock;
-        }
-        Sound.resist();
-        return;
-      }
-      press.dragging = true;
-      preview = null;
-      const s = sprites.get(press.id);
-      if (s) {
-        s.lift = true;
-        s.state = "idle";
-      }
-      Sound.lift();
-      buzz(6);
-    }
-    dragFollow(pt.x, pt.y);
-  });
-
-  // 指の位置まで、となりのマスと入れかえながら進む（2マスまで。戻るのは自由）
-  function dragFollow(x, y) {
-    for (let k = 0; k < 3 && game.drag; k++) {
-      const path = game.drag.path;
-      const [r, c] = path[path.length - 1];
-      const dx = x - cellX(c);
-      const dy = y - cellY(r);
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < view.cell * 0.58) break;
-      const dir = Math.abs(dx) > Math.abs(dy) ? [0, Math.sign(dx)] : [Math.sign(dy), 0];
-      const res = game.step(r + dir[0], c + dir[1]);
-      if (!res) {
-        if (!press.resistAt || clock - press.resistAt > 0.35) {
-          press.resistAt = clock;
-          Sound.resist();
-          if (game.dragStepsUsed() >= PB.DRAG_STEPS) bumpEl($("pb-dragsteps"), "no");
-        }
-        break;
-      }
-      applyStep(res);
-    }
-  }
-
-  // 1マス動いた：押し出された駒はすべって入れかわる
-  function applyStep(res) {
-    slideSprite(res.b.id, res.b.tr, res.b.tc, 0.1);
-    const s = sprites.get(res.a.id);
-    if (s && !s.lift) slideSprite(res.a.id, res.a.tr, res.a.tc, 0.1);
-    Sound.step(res.used, res.back);
-    buzz(5);
-    updateDragBar(true);
-    if (tutorial && tutorial.kind === "drag") tutorial = null;
-  }
-
-  function slideSprite(id, r, c, dur) {
-    const s = sprites.get(id);
-    if (!s) return;
-    s.state = "slide";
-    s.ax0 = s.x;
-    s.ay0 = s.y;
-    s.ax1 = c;
-    s.ay1 = r;
-    s.t0 = clock;
-    s.dur = dur;
-  }
-
-  function endPress(e, cancel) {
-    if (!press || (e && e.pointerId !== press.pointerId)) return;
-    const pr = press;
-    press = null;
-    preview = null;
-    if (pr.dragging) {
-      dropDrag(pr);
-      return;
-    }
-    if (cancel || pr.blocked || phase !== "play") return;
-    const pt = e ? boardPoint(e) : { x: pr.x0, y: pr.y0 };
-    const cell = cellAt(pt.x, pt.y);
-    if (cell && cell[0] === pr.r && cell[1] === pr.c) doTap(pr.r, pr.c);
-  }
-  boardCanvas.addEventListener("pointerup", (e) => endPress(e, false));
-  boardCanvas.addEventListener("pointercancel", (e) => endPress(e, true));
-  boardCanvas.addEventListener("lostpointercapture", (e) => {
-    if (press && e.pointerId === press.pointerId) endPress(e, true);
-  });
-
-  // 指を離した：駒をマスへおろす。そろったら教える
-  function dropDrag(pr) {
-    const s = game.drag ? sprites.get(game.drag.id) : sprites.get(pr.id);
-    game.release();
-    if (s) {
-      s.lift = false;
-      const at = game.find(s.id);
-      if (at) {
-        s.x = (pr.fx - view.x) / view.cell - 0.5;
-        s.y = (pr.fy - view.y) / view.cell - 0.5;
-        s.x = Math.max(at[1] - 0.6, Math.min(at[1] + 0.6, s.x));
-        s.y = Math.max(at[0] - 0.6, Math.min(at[0] + 0.6, s.y));
-        slideSprite(s.id, at[0], at[1], 0.12);
-        s.landSquash = true;
-      }
-    }
-    Sound.drop();
-    updateDragBar();
-    if (!game.drag) return;
-    const path = game.drag.path;
-    const [r, c] = path[path.length - 1];
-    const p = game.at(r, c);
-    if (p && p.t === "c") {
-      const cells = game.groupAt(r, c);
-      if (cells.length >= 4) {
-        for (const [y, x] of cells) sparkles(x, y, 3);
-        Sound.create();
-        const make = NAMES[PB.boosterFor(cells.length)];
-        if (level.tutorial === "drag" && !save.seen.dragTap) tutorial = { kind: "tap", r, c, text: `そろった！ タップで${make}に` };
-        else floaters.push({ kind: "label", text: `${cells.length}つ そろった！`, x: cellX(c), y: cellY(r) - view.cell * 0.7, t0: clock, dur: 0.9 });
-      }
-    } else if (p && PB.isBooster(p) && game.boosterClusterAt(r, c).length >= 2) {
-      floaters.push({ kind: "label", text: "合体できる！", x: cellX(c), y: cellY(r) - view.cell * 0.7, t0: clock, dur: 0.9 });
-      Sound.charge();
-    }
-  }
-
-  // ドラッグを元に戻す
-  function undoDrag() {
-    if (phase !== "play" || !game.drag) return;
-    while (game.drag && game.dragStepsUsed() > 0) {
-      const path = game.drag.path;
-      const [r, c] = path[path.length - 2];
-      const res = game.step(r, c);
-      if (!res) break;
-      slideSprite(res.b.id, res.b.tr, res.b.tc, 0.12);
-      slideSprite(res.a.id, res.a.tr, res.a.tc, 0.12);
-    }
-    game.release();
-    Sound.whoosh();
-    updateDragBar(true);
-  }
-  $("pb-undo").addEventListener("click", () => {
-    Sound.unlock();
-    undoDrag();
-  });
-
-  // タップ：消す
-  function doTap(r, c) {
-    const p = game.at(r, c);
+    if (phase !== "play") return;
+    const r = boardCanvas.getBoundingClientRect();
+    const x = e.clientX - r.left - view.x;
+    const y = e.clientY - r.top - view.y;
+    const c = Math.floor(x / view.cell);
+    const rr2 = Math.floor(y / view.cell);
+    if (!game.inside(rr2, c)) return;
+    const p = game.at(rr2, c);
     if (!p) return;
     lastInput = clock;
     hintCells = null;
-    const res = game.tap(r, c);
+    const res = game.tap(rr2, c);
     if (!res) {
       // 消せない：ぷるっと震えて、低い音
       const s = sprites.get(p.id);
-      if (s) s.wobble = clock;
+      if (s) {
+        s.wobble = clock;
+      }
       Sound.invalid();
       return;
     }
-    if (tutorial) {
-      if (level.tutorial === "drag" && tutorial.kind === "tap") {
-        save.seen.dragTap = true;
-        writeSave();
-      }
-      tutorial = null;
-    }
+    tutorial = null;
     setMoves(game.moves);
-    turnGain = 0;
-    resetCombo();
-    updateDragBar();
-    play(res, r, c);
-  }
-
-  // キーボード：矢印で選ぶ・Enter / Space で消す・Shift＋矢印で動かす・Backspace で戻す
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && app.dataset.screen === "game" && phase !== "end") {
-      const m = $("pb-pausemenu");
-      if (m.classList.contains("show")) resume();
-      else pause();
-      return;
-    }
-    if (app.dataset.screen !== "game" || paused || document.querySelector(".pb-modal.show")) return;
-    if (phase === "finale" && (e.key === "Enter" || e.key === " ")) {
-      timeScale = 4;
-      return;
-    }
-    if (phase !== "play") return;
-    const dirs = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
-    if (dirs[e.key]) {
-      e.preventDefault();
-      Sound.unlock();
-      const [dy, dx] = dirs[e.key];
-      if (e.shiftKey) {
-        // 選んでいる駒を動かす
-        if (!game.drag && !game.pick(kb.r, kb.c)) {
-          Sound.resist();
-          bumpEl($("pb-dragsteps"), "no");
-          return;
-        }
-        const path = game.drag.path;
-        const [r, c] = path[path.length - 1];
-        const res = game.step(r + dy, c + dx);
-        if (!res) {
-          Sound.resist();
-          bumpEl($("pb-dragsteps"), "no");
-          game.release();
-          return;
-        }
-        slideSprite(res.a.id, res.a.tr, res.a.tc, 0.1);
-        applyStep(res);
-        kb.r = res.a.tr;
-        kb.c = res.a.tc;
-        game.release();
-        kb.on = true;
-        return;
-      }
-      if (!kb.on) kb.on = true;
-      else {
-        let r = kb.r + dy;
-        let c = kb.c + dx;
-        for (let k = 0; k < Math.max(level.rows, level.cols) && !game.inside(r, c); k++) {
-          r += dy;
-          c += dx;
-        }
-        if (game.inside(r, c)) {
-          kb.r = r;
-          kb.c = c;
-        }
-      }
-      lastInput = clock;
-      Sound.press();
-      return;
-    }
-    if ((e.key === "Enter" || e.key === " ") && kb.on) {
-      e.preventDefault();
-      doTap(kb.r, kb.c);
-      return;
-    }
-    if (e.key === "Backspace" || e.key === "u" || e.key === "U") {
-      e.preventDefault();
-      undoDrag();
-    }
+    play(res, rr2, c);
   });
 
   // =========================================================
@@ -1585,22 +1046,29 @@
     const start = clock;
     for (const e of res.events) timeline.push({ at: start + e.t, e });
     timeline.sort((a, b) => a.at - b.at);
-    turnGain += res.gain;
-    const n = res.comboStart || 1;
-    // 最初の手ごたえ
-    if (res.kind === "group" || res.kind === "cascade") {
-      Sound.pop(n, res.size);
-      buzz(n >= 3 ? 14 : 8);
-      if (res.made && res.made.length) setTimeout(() => Sound.create(), 160);
-    } else if (res.kind === "fusion") {
-      Sound.fusion();
+    // 最初の手ごたえ（タップした瞬間）
+    if (res.kind === "group") {
+      Sound.pop(res.size);
+      buzz(8);
+      if (res.created) setTimeout(() => Sound.create(), 160);
+    } else if (res.kind === "combo") {
+      Sound.combo();
       buzz(30);
-      addShake(8);
-      banner(FUSION_NAMES[res.fusion] || "合体！", 1.1, "fusion");
+      shake = Math.max(shake, 10);
+      banner(comboName(res.combo), 1.1, "combo");
     }
-    const piv = res.pivot || [tr, tc];
-    floaters.push({ kind: "score", text: "+" + res.gain.toLocaleString(), mult: res.mult, n: res.combo, x: cellX(piv[1]), y: cellY(piv[0]), t0: clock + 0.1, dur: 0.95 });
-    resolveEnd = start + res.duration + 0.22 * tempo(res.combo);
+    const gainAt = [cellX(tc), cellY(tr)];
+    floaters.push({ kind: "score", text: "+" + res.gain, x: gainAt[0], y: gainAt[1], t0: clock + 0.1, dur: 0.9, board: true });
+    // たくさん消したら、ほめる
+    const n = res.popped;
+    const praise = n >= 50 ? "ミラクル！" : n >= 32 ? "スーパー！" : n >= 20 ? "すごい！" : n >= 12 ? "いいね！" : null;
+    if (praise) setTimeout(() => banner(praise, 1.0, "praise"), 260);
+    resolveEnd = start + res.duration + 0.28;
+  }
+  let resolveEnd = 0;
+
+  function comboName(c) {
+    return { "rocket+rocket": "クロス！", "rocket+bomb": "メガロケット！", "bomb+bomb": "ビッグボム！", "disco+rocket": "レインボー×ロケット！", "disco+bomb": "レインボー×ボム！", "disco+disco": "ぜんぶ消し！" }[c] || "コンボ！";
   }
 
   function runTimeline() {
@@ -1623,8 +1091,7 @@
         } else {
           s.state = "pop";
           s.t0 = clock;
-          burst(e.c, e.r, e.piece, Math.min(2.4, 1 + 0.2 * (combo.n - 1)));
-          jiggleAround(e.r, e.c);
+          burst(e.c, e.r, e.piece);
           if (e.by !== "group") Sound.smallPop();
         }
         if (e.goal) {
@@ -1644,25 +1111,17 @@
         Sound.tone(220, 0.08, { type: "square", vol: 0.05 });
         break;
       case "spawn": {
-        makeSprite(e.piece, e.r, e.c, { state: "grow", t0: clock, scale: 0 });
+        const ns = makeSprite(e.piece, e.r, e.c, { state: "grow", t0: clock, scale: 0 });
         ring(e.c, e.r, "#fff", 0.35, 1.1);
         sparkles(e.c, e.r, 12);
-        if (e.piece.pow > 1 && !inFinale) {
-          floaters.push({ kind: "label", text: "チャージ！", x: cellX(e.c), y: cellY(e.r) - view.cell * 0.6, t0: clock + 0.1, dur: 0.9, gold: true });
-          setTimeout(() => Sound.charge(), 120);
-          if (!save.seen.charge) {
-            save.seen.charge = true;
-            writeSave();
-            setTimeout(() => banner("連鎖でできたブースターは強い！", 1.6, "tip"), 500);
-          }
-        }
-        if (!save.seen.booster && !inFinale) {
-          save.seen.booster = true;
+        if (!save.seenBooster && phase !== "finale") {
+          save.seenBooster = true;
           writeSave();
           setTimeout(() => {
-            if (phase === "play" && game.at(e.r, e.c) === e.piece) tutorial = { kind: "tap", r: e.r, c: e.c, text: "ブースターをタップして発動！" };
-          }, 900);
+            if (phase === "play" && game.at(e.r, e.c) === e.piece) tutorial = { r: e.r, c: e.c, text: "ブースターをタップして発動！" };
+          }, 700);
         }
+        void ns;
         break;
       }
       case "transform": {
@@ -1681,134 +1140,45 @@
         if (e.fx === "rocket") {
           fx.push({ kind: "rocket", r: e.r, c: e.c, dir: e.dir, t0: clock, big: !!e.big });
           Sound.rocket();
-          addShake(e.big ? 7 : 4);
+          shake = Math.max(shake, e.big ? 8 : 4);
           buzz(12);
         } else if (e.fx === "bomb") {
           fx.push({ kind: "bomb", r: e.r, c: e.c, radius: e.radius, t0: clock, big: !!e.big });
           Sound.bomb(e.big);
-          addShake(e.big ? 9 : e.mini ? 4 : 7);
+          shake = Math.max(shake, e.big ? 16 : 9);
           if (e.big) flash();
           buzz(e.big ? 40 : 20);
         } else if (e.fx === "disco") {
           fx.push({ kind: "disco", r: e.r, c: e.c, color: e.color, targets: e.targets, t0: clock });
           Sound.disco();
           flash();
-          addShake(6);
-        }
-        break;
-      case "fusion":
-        ring(e.c, e.r, "#ffe36b", 0.6, 3.5);
-        if (e.goal) {
-          const gi = game.goals.indexOf(e.goal);
-          if (gi >= 0) flyTo(gi, e.r, e.c, { t: "fusionIcon" });
+          shake = Math.max(shake, 6);
         }
         break;
       case "combo":
-        comboStep(e.n, e.mult);
+        ring(e.c, e.r, "#ffe36b", 0.6, 3.5);
         break;
     }
   }
 
-  function addShake(v) {
-    shake = Math.min(9, Math.max(shake, v));
-  }
-
-  // ---- COMBO ----
-  function resetCombo() {
-    combo.n = 0;
-    combo.show = false;
-    combo.tier = 0;
-    combo.word = "";
-    combo.ending = false;
-    combo.near = 0;
-    combo.goalDone = false;
-    app.classList.remove("pb-fever");
-  }
-  function comboStep(n, mult) {
-    combo.n = n;
-    combo.mult = mult;
-    combo.t0 = clock;
-    combo.ending = false;
-    if (!inFinale) maxComboPlay = Math.max(maxComboPlay, n);
-    if (n < 2) return;
-    combo.show = true;
-    const tier = Math.min(7, n);
-    if (tier > combo.tier) {
-      combo.tier = tier;
-      combo.word = WORDS[tier];
-      combo.wordT0 = clock;
-      Sound.tier(n);
-    } else Sound.tone(Sound.note(Math.min(14, n)), 0.12, { type: "triangle", vol: 0.08 });
-    addShake(Math.min(8, 1.5 + n));
-    buzz(Math.min(40, 6 + n * 4));
-    if (n >= 3) comboShower(n);
-    if (n >= 7) app.classList.add("pb-fever");
-  }
-  // 盤面のふちから、きらきらが上がる
-  function comboShower(n) {
-    const count = Math.min(30, 4 + n * 3);
-    for (let i = 0; i < count; i++) {
-      const side = Math.random() < 0.5 ? -0.5 : level.cols - 0.5;
-      const cx = view.x + (side + 0.5) * view.cell;
-      const cy = view.y + Math.random() * view.bh;
-      addParticle({ x: cx, y: cy, vx: (side < 0 ? 1 : -1) * view.cell * (0.5 + Math.random()), vy: -view.cell * (2 + Math.random() * 2), life: 0, max: 0.7 + Math.random() * 0.3, size: view.cell * (0.1 + Math.random() * 0.08), color: ["#fff", "#ffe36b", TIER_COLORS[Math.min(7, n)]][i % 3], kind: "star", g: view.cell * 2 });
-    }
-  }
-  // ターンの COMBO がとまった瞬間
-  function finishCombo(end, quiet) {
-    const n = end.combo;
-    if (n < 2) {
-      if (!combo.show) resetCombo();
-      return;
-    }
-    combo.ending = true;
-    combo.endT0 = clock;
-    combo.total = turnGain;
-    combo.near = quiet ? 0 : end.near;
-    combo.show = true;
-    Sound.chainEnd(n);
-    if (n >= 3) hitstop = 0.13;
-    addShake(Math.min(9, 2 + n));
-    if (n >= 5 && !quiet) {
-      const a = comboAnchor();
-      for (let i = 0; i < 18 + n * 4; i++) addConfetti(a.x, a.y, true);
-    }
-    if (combo.near) {
-      setTimeout(() => Sound.near(), 280);
-      buzz(25);
-      const gi = game.goals.findIndex((g) => g.type === "combo" && g.min === combo.near && g.left > 0);
-      const el = $("pb-goals").children[gi];
-      if (el) setTimeout(() => bumpEl(el, "hit"), 280);
-    }
-    setTimeout(() => app.classList.remove("pb-fever"), 1200);
-  }
-
   // ---- 粒（消えるときのはじけ・木くず・きらきら） ----
-  const MAX_PARTICLES = 420;
+  const MAX_PARTICLES = 320;
   function addParticle(p) {
     if (particles.length >= MAX_PARTICLES) particles.shift();
     particles.push(p);
   }
-  function burst(c, r, piece, power = 1) {
+  function burst(c, r, piece) {
     const x = cellX(c);
     const y = cellY(r);
     const col = piece.t === "c" ? COLORS[piece.color].base : piece.t === "balloon" ? "#ff8cc6" : piece.t === "gift" ? "#ae73ff" : "#ffe36b";
     const light = piece.t === "c" ? COLORS[piece.color].light : "#ffffff";
-    const n = Math.round(7 * power);
+    const n = 7;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
-      const sp = view.cell * (2.2 + Math.random() * 2.5) * (0.85 + power * 0.15);
+      const sp = view.cell * (2.2 + Math.random() * 2.5);
       addParticle({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - view.cell, life: 0, max: 0.45 + Math.random() * 0.25, size: view.cell * (0.09 + Math.random() * 0.08), color: i % 3 ? col : light, kind: "dot", g: view.cell * 9 });
     }
-    addParticle({ x, y, life: 0, max: 0.28, size: view.cell * 0.45 * (0.8 + power * 0.2), color: light, kind: "ring" });
-  }
-  // 消えたぽよのまわりが、ぷるんと揺れる
-  function jiggleAround(r, c) {
-    for (const s of sprites.values()) {
-      if (s.state !== "idle") continue;
-      const d = Math.abs(s.x - c) + Math.abs(s.y - r);
-      if (d > 0 && d <= 1.01) s.jig = clock;
-    }
+    addParticle({ x, y, life: 0, max: 0.28, size: view.cell * 0.45, color: light, kind: "ring" });
   }
   function debris(c, r, t, n) {
     const x = cellX(c);
@@ -1861,31 +1231,20 @@
   function banner(text, dur, kind) {
     floaters.push({ kind, text, t0: clock, dur });
   }
-  // 画面の位置から目標アイコンへ（COMBO の目標）
-  function flyFrom(gi, x, y, piece) {
-    const el = $("pb-goals").children[gi];
-    if (!el) return;
-    const b = el.querySelector("canvas").getBoundingClientRect();
-    flyers.push({ gi, x0: x, y0: y, x1: b.left + b.width / 2, y1: b.top + b.height / 2, t0: clock + 0.35, dur: 0.6, piece });
-  }
 
   // =========================================================
-  // 落下・連鎖・ターンのおしまい
+  // 落下・終わりの判定
   // =========================================================
 
   function startSettle() {
     const col = game.collapse();
-    const n = Math.max(1, game.combo);
-    gravity = 70 * Math.min(1.8, 1 + 0.12 * (n - 1));
-    const lag = 0.012 * tempo(n);
     for (const m of col.moves) {
       const s = sprites.get(m.id);
       if (!s) continue;
       s.ty = m.tr;
-      s.x = m.tc; // ドラッグ直後で、まだすべっている途中でも、列にそろえて落とす
       s.state = "fall";
       s.vy = 0;
-      s.delay = clock + (level.rows - m.tr) * lag;
+      s.delay = clock + (level.rows - m.tr) * 0.012;
     }
     // 新しいぽよは、その列の盤面のいちばん上の、さらに上から
     const top = [];
@@ -1899,7 +1258,7 @@
       s.y = top[sp.tc] + sp.from - 0.2;
       s.state = "fall";
       s.vy = 2;
-      s.delay = clock + (level.rows - sp.tr) * lag;
+      s.delay = clock + (level.rows - sp.tr) * 0.012;
     }
     for (const g of col.collected) {
       const s = sprites.get(g.id);
@@ -1910,107 +1269,58 @@
   }
 
   function allLanded() {
-    for (const s of sprites.values()) if (s.state === "fall" || s.state === "pop" || s.state === "merge" || s.state === "collect" || s.state === "slide") return false;
+    for (const s of sprites.values()) if (s.state === "fall" || s.state === "pop" || s.state === "merge" || s.state === "collect") return false;
     return true;
   }
 
-  // 落ち終わった：自動で消えるかたまりがあれば連鎖、なければターンのおしまい
+  // 落ち終わったら：クリア？ 手数切れ？ 消せる所がない？
   function afterSettle() {
-    const res = game.cascade();
-    if (res) {
-      anticipate(res);
-      return;
-    }
-    chainEnd();
-  }
-
-  // 連鎖の直前：そろったかたまりが光って、ふくらむ（「来た！」のため）
-  function anticipate(res) {
-    pendingCascade = res;
-    phase = "anticipate";
-    const n = res.comboStart;
-    antEnd = clock + 0.3 * tempo(n);
-    for (const e of res.events) {
-      if (e.type !== "pop") continue;
-      const s = sprites.get(e.id);
-      if (s) s.charge = clock;
-    }
-    Sound.anticipate(n);
-  }
-
-  function chainEnd() {
-    const end = game.endTurn();
-    comboLog.push(end.combo);
-    if (inFinale) {
-      if (end.combo >= 2) finishCombo(end, true);
-      phase = "finale";
-      finaleTimer = clock + 0.12;
-      return;
-    }
-    if (end.combo >= 1) finishCombo(end, false);
-    // COMBO の目標を達成：COMBO の表示から、目標アイコンへ飛んでいく
-    if (end.goals.length) {
-      const a = comboAnchor();
-      for (const g of end.goals) flyFrom(game.goals.indexOf(g), a.x, a.y, { t: "comboBadge", n: g.min });
-      combo.goalDone = true;
-    }
-    // 少し間をおいてから（そのあいだにやり直したら、何もしない）
-    const at = attempt;
     if (game.goalsDone()) {
-      phase = "wait";
-      setTimeout(() => attempt === at && startFinale(), end.combo >= 2 ? 900 : 300);
+      startFinale();
       return;
     }
     if (game.moves <= 0) {
       phase = "end";
-      setTimeout(() => attempt === at && showLose(), end.combo >= 2 ? 1300 : 700);
+      setTimeout(showLose, 650);
       return;
     }
     if (!game.hasMoves()) {
       // 並べかえ
       banner("シャッフル！", 1.0, "praise");
       game.shuffle();
-      for (const s of sprites.values())
-        if (s.p.t === "c") {
-          s.state = "spin";
-          s.t0 = clock;
-        }
+      for (const s of sprites.values()) if (s.p.t === "c") {
+        s.state = "spin";
+        s.t0 = clock;
+      }
       Sound.whoosh();
       phase = "settle";
       return;
     }
     phase = "play";
-    lastInput = clock;
-    updateDragBar();
   }
 
   // =========================================================
-  // クリア：残り手数がブースターになって、全部発動（連鎖もする）
+  // クリア：残り手数がブースターになって、全部発動
   // =========================================================
 
   let finaleStep = 0;
-  let finaleTimer = 0;
   function startFinale() {
-    if (!game || app.dataset.screen !== "game") return;
     phase = "finale";
-    inFinale = true;
     finaleStep = 0;
     tutorial = null;
     hintCells = null;
-    press = null;
-    preview = null;
-    resetCombo();
     banner("ステージクリア！", 1.4, "clear");
     Sound.win();
     for (let i = 0; i < 70; i++) addConfetti();
     $("pb-moves").parentElement.classList.remove("low");
     finaleTimer = clock + 1.3;
-    updateDragBar();
     if (game.moves > 0) setTimeout(() => phase === "finale" && banner("ボーナスタイム！", 1.0, "praise"), 1100);
   }
+  let finaleTimer = 0;
 
   function finaleTick() {
-    if (clock < finaleTimer || timeline.length || !allLanded()) return;
+    if (clock < finaleTimer) return;
+    if (timeline.length || !allLanded()) return;
     // 1) 残り手数をひとつずつブースターに
     if (game.moves > 0) {
       const f = game.finaleConvert();
@@ -2028,25 +1338,26 @@
       game.moves = 0;
       setMoves(0, false);
     }
-    // 2) 盤面のブースターを順に発動（落ちて、連鎖して、また次）
+    // 2) 盤面のブースターを順に発動
     const list = game.boosterCells();
     if (list.length && finaleStep < 200) {
       const [r, c] = list[0];
       const res = game.tap(r, c, { free: true });
       finaleStep++;
       if (res) {
-        turnGain = 0;
-        play(res, r, c);
+        const start = clock;
+        for (const e of res.events) timeline.push({ at: start + e.t, e });
+        timeline.sort((a, b) => a.at - b.at);
+        finaleTimer = start + res.duration + 0.15;
+        finaleNeedsSettle = true;
       }
       return;
     }
     // 3) おしまい
     phase = "end";
-    inFinale = false;
-    timeScale = 1;
-    const at = attempt;
-    setTimeout(() => attempt === at && showWin(), 500);
+    setTimeout(showWin, 500);
   }
+  let finaleNeedsSettle = false;
 
   // =========================================================
   // クリア／手数切れのポップアップ
@@ -2059,17 +1370,14 @@
     const id = level.id;
     const prevBest = save.best[id] || 0;
     const newBest = game.score > prevBest;
-    const prevCombo = save.bestCombo[id] || 0;
     save.stars[id] = Math.max(save.stars[id] || 0, stars);
     if (newBest) save.best[id] = game.score;
-    save.bestCombo[id] = Math.max(prevCombo, maxComboPlay);
     save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, id + 1));
     writeSave();
     const starEls = $("pb-win-stars").querySelectorAll(".pb-star");
     starEls.forEach((el) => el.classList.remove("on"));
     $("pb-win-score").textContent = "0";
     $("pb-win-best").textContent = "";
-    $("pb-win-combo").textContent = maxComboPlay >= 2 ? `MAX ${maxComboPlay} COMBO` + (maxComboPlay > prevCombo && prevCombo ? "（ベスト更新！）" : "") : "";
     $("pb-win-next").textContent = id < LEVELS.length ? "つぎへ ▶" : "マップへ ▶";
     showModal("pb-win");
     // 星をひとつずつ
@@ -2090,22 +1398,9 @@
       $("pb-win-score").textContent = Math.round(target * (1 - Math.pow(1 - k, 3))).toLocaleString();
       if (k < 1) requestAnimationFrame(count);
       else if (newBest && prevBest) $("pb-win-best").textContent = "ハイスコア更新！";
-      else if (stars < 3) $("pb-win-best").textContent = "COMBO をつなぐと、星がふえる！";
     };
     requestAnimationFrame(count);
     setTimeout(() => $("pb-win-next").focus({ preventScroll: true }), 80);
-  }
-
-  // 手数切れ：「惜しかった」と「次はこうすれば」を伝える
-  function loseNote() {
-    const k = maxComboPlay;
-    const comboGoal = game.goals.find((g) => g.type === "combo" && g.left > 0);
-    if (comboGoal && k === comboGoal.min - 1) return `最高 ${k} COMBO！ あと1コンボで目標だった…！ もう一回で届きそう！`;
-    if (comboGoal && k >= 2) return `最高 ${k} COMBO！ 下から順に「落ちたらそろう形」を仕込もう！`;
-    const left = game.goals.reduce((n, g) => n + Math.max(0, g.left), 0);
-    if (left <= 3) return `あと ${left} つだった…！ 惜しい！ もう一回！`;
-    if (k >= 3) return `最高 ${k} COMBO！ その調子！`;
-    return "ぽよを1つ動かして、4つそろう形を作ってから消そう！";
   }
 
   function showLose() {
@@ -2113,7 +1408,6 @@
     const list = $("pb-lose-goals");
     list.innerHTML = "";
     for (const g of game.goals) if (g.left > 0) list.appendChild(goalIcon(g, g.left));
-    $("pb-lose-note").textContent = loseNote();
     $("pb-lose-continue").disabled = continued;
     $("pb-lose-continue").hidden = continued;
     showModal("pb-lose");
@@ -2161,26 +1455,16 @@
     showModal(null);
     banner("＋5手！", 1.0, "praise");
     phase = "play";
-    updateDragBar();
   });
-  function pause() {
-    if (phase === "end" || phase === "wait" || inFinale || app.dataset.screen !== "game") return;
-    paused = true;
-    if (press) endPress(null, true);
-    showModal("pb-pausemenu");
-  }
-  function resume() {
-    paused = false;
-    showModal(null);
-  }
   $("pb-pause").addEventListener("click", () => {
     Sound.unlock();
     Sound.click();
-    pause();
+    if (phase === "end") return;
+    showModal("pb-pausemenu");
   });
   $("pb-resume").addEventListener("click", () => {
     Sound.click();
-    resume();
+    showModal(null);
   });
   $("pb-restart").addEventListener("click", () => {
     Sound.click();
@@ -2195,8 +1479,6 @@
 
   function goMap() {
     phase = "idle";
-    paused = false;
-    resetCombo();
     setScreen("map");
     buildMap();
   }
@@ -2221,21 +1503,15 @@
 
   let lastT = performance.now();
   function frame(t) {
-    let real = Math.min(0.05, (t - lastT) / 1000);
+    const real = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
-    // 連鎖がとまった瞬間は、ほんの少しだけゆっくり
-    let slow = 1;
-    if (hitstop > 0) {
-      hitstop -= real;
-      slow = 0.18;
-    }
-    const dt = paused ? 0 : real * timeScale * slow;
+    const dt = real * timeScale;
     if (app.dataset.screen === "game" && game) {
       clock += dt;
-      if (!paused) step(dt);
+      step(dt);
       drawBoard();
     }
-    drawFx(paused ? 0 : real);
+    drawFx(real);
     requestAnimationFrame(frame);
   }
 
@@ -2245,35 +1521,16 @@
     for (const s of sprites.values()) {
       if (s.state === "fall") {
         if (s.delay && clock < s.delay) continue;
-        s.vy = Math.min(s.vy + gravity * dt, 24);
+        s.vy = Math.min(s.vy + 70 * dt, 22);
         s.y += s.vy * dt;
         if (s.y >= s.ty) {
           s.y = s.ty;
-          // 着地：つぶれて、ぽよんと弾む
-          s.squash = Math.min(1, s.vy / 11);
-          s.bounceT = clock;
-          s.bounceA = Math.min(0.14, s.vy * 0.012);
+          s.squash = Math.min(1, s.vy / 12);
           s.vy = 0;
           s.state = "idle";
           if (s.collect !== undefined) {
             s.state = "collect";
             s.t0 = clock;
-          }
-        }
-      } else if (s.state === "slide") {
-        const k = Math.min(1, (clock - s.t0) / s.dur);
-        const e = 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2); // 少し行きすぎて戻る
-        s.x = s.ax0 + (s.ax1 - s.ax0) * e;
-        s.y = s.ay0 + (s.ay1 - s.ay0) * e;
-        if (k >= 1) {
-          s.x = s.ax1;
-          s.y = s.ay1;
-          s.state = "idle";
-          if (s.landSquash) {
-            s.landSquash = false;
-            s.squash = 0.7;
-            s.bounceT = clock;
-            s.bounceA = 0.1;
           }
         }
       } else if (s.state === "merge") {
@@ -2314,13 +1571,15 @@
     // 段階の切りかえ
     if (phase === "resolve" && clock >= resolveEnd && !timeline.length) startSettle();
     else if (phase === "settle" && !timeline.length && allLanded()) afterSettle();
-    else if (phase === "anticipate" && clock >= antEnd) {
-      const r = pendingCascade;
-      pendingCascade = null;
-      play(r);
-    } else if (phase === "finale") finaleTick();
+    else if (phase === "finale") {
+      if (finaleNeedsSettle && !timeline.length && clock >= finaleTimer) {
+        finaleNeedsSettle = false;
+        startSettleFinale();
+      }
+      finaleTick();
+    }
     // 少し何もしないと、消せる所を教える
-    if (phase === "play" && !tutorial && !hintCells && !press && clock - lastInput > 6) {
+    if (phase === "play" && !tutorial && !hintCells && clock - lastInput > 5) {
       const best = game.options().sort((a, b) => (b.kind === "booster" ? 99 : b.size) - (a.kind === "booster" ? 99 : a.size))[0];
       if (best) hintCells = best.cells || [[best.r, best.c]];
     }
@@ -2336,11 +1595,39 @@
     }
     particles = particles.filter((p) => p.life < p.max);
     fx = fx.filter((f) => clock - f.t0 < (f.kind === "disco" ? 0.7 : f.kind === "bomb" ? 0.5 : 1.2));
-    shake = Math.max(0, shake - dt * 45);
+    shake = Math.max(0, shake - dt * 40);
     // 点数の表示を本当の点数へ
     if (displayScore < game.score) {
       displayScore = Math.min(game.score, displayScore + Math.max(20, (game.score - displayScore) * dt * 6));
       updateScoreUi();
+    }
+  }
+
+  function startSettleFinale() {
+    const col = game.collapse();
+    for (const m of col.moves) {
+      const s = sprites.get(m.id);
+      if (!s) continue;
+      s.ty = m.tr;
+      s.state = "fall";
+      s.vy = 0;
+      s.delay = clock;
+    }
+    const top = [];
+    for (let c = 0; c < level.cols; c++) {
+      let t = 0;
+      while (t < level.rows && !game.inside(t, c)) t++;
+      top.push(t);
+    }
+    for (const sp of col.spawns) {
+      const s = makeSprite(sp.piece, sp.tr, sp.tc);
+      s.y = top[sp.tc] + sp.from - 0.2;
+      s.state = "fall";
+      s.vy = 3;
+    }
+    for (const g of col.collected) {
+      const s = sprites.get(g.id);
+      if (s) sprites.delete(g.id);
     }
   }
 
@@ -2357,17 +1644,6 @@
     const sy = shake ? (Math.random() - 0.5) * shake : 0;
     g.save();
     g.translate(sx, sy);
-    // FEVER：盤面のまわりが虹色に光る
-    if (combo.show && combo.n >= 7 && !combo.ending) {
-      g.save();
-      g.shadowColor = `hsl(${(clock * 360) % 360},100%,60%)`;
-      g.shadowBlur = 24;
-      g.strokeStyle = `hsl(${(clock * 360) % 360},100%,65%)`;
-      g.lineWidth = 6;
-      rr(g, view.x - 10, view.y - 10, view.bw + 20, view.bh + 20, 18);
-      g.stroke();
-      g.restore();
-    }
     if (boardBg) g.drawImage(boardBg, view.x - 12, view.y - 12, view.bw + 24, view.bh + 24);
     const cs = view.cell;
     // 駒（盤面のマスの中だけ）
@@ -2376,17 +1652,68 @@
     g.clip(boardClip);
     const hint = hintCells ? new Set(hintCells.map(([r, c]) => r * 100 + c)) : null;
     const list = [...sprites.values()].sort((a, b) => a.y - b.y);
-    let lifted = null;
     for (const s of list) {
-      if (s.lift) {
-        lifted = s;
-        continue;
-      }
       if (s.state === "fall" && s.y < -1.2) continue;
-      drawSprite(g, s, hint);
+      let scale = s.scale;
+      let ox = 0;
+      let oy = 0;
+      let sxk = 1;
+      let syk = 1;
+      let rot = s.rot || 0;
+      // 生きている感じ：ゆっくり呼吸・ときどきまばたき
+      if (s.state === "idle" && s.p.t === "c") {
+        const b = Math.sin(clock * 2.2 + s.id * 0.7) * 0.025;
+        syk += b;
+        sxk -= b * 0.6;
+      }
+      if (s.squash) {
+        syk -= 0.22 * s.squash;
+        sxk += 0.14 * s.squash;
+        oy += 0.11 * s.squash;
+      }
+      if (s.wobble && clock - s.wobble < 0.35) {
+        const k = clock - s.wobble;
+        ox += Math.sin(k * 50) * 0.08 * (1 - k / 0.35);
+      }
+      if (hint && hint.has(Math.round(s.y) * 100 + Math.round(s.x)) && s.state === "idle") {
+        const w = Math.sin(clock * 9) * 0.06;
+        scale *= 1.06 + w;
+        rot += Math.sin(clock * 9) * 0.06;
+      }
+      if (s.state === "pop") {
+        const k = (clock - s.t0) / 0.22;
+        scale = k < 0.35 ? 1 + 0.28 * (k / 0.35) : 1.28 * (1 - (k - 0.35) / 0.65);
+        s.alpha = 1 - Math.max(0, (k - 0.5) * 2);
+      }
+      if (s.p.t === "disco") rot += clock * 1.5;
+      const blink = s.p.t === "c" && clock > s.blinkAt && clock < s.blinkAt + 0.13;
+      if (s.p.t === "c" && clock > s.blinkAt + 0.13) s.blinkAt = clock + 2 + Math.random() * 7;
+      const img = pieceSprite(s.p, cs, { blink, hp: s.hp });
+      if (!img) continue;
+      const cx = (s.x + 0.5 + ox) * cs;
+      const cy = (s.y + 0.5 + oy) * cs;
+      g.save();
+      g.globalAlpha = s.alpha;
+      g.translate(cx, cy + (1 - syk) * cs * 0.5);
+      if (rot) g.rotate(rot);
+      g.scale(scale * sxk, scale * syk);
+      g.drawImage(img, -cs / 2, -cs / 2, cs, cs);
+      if (s.flash && clock - s.flash < 0.12) {
+        g.globalCompositeOperation = "lighter";
+        g.globalAlpha = 0.5;
+        g.drawImage(img, -cs / 2, -cs / 2, cs, cs);
+      }
+      g.restore();
+      // ボムの導火線の火花
+      if (s.p.t === "bomb" && s.state !== "pop") {
+        g.save();
+        g.fillStyle = Math.sin(clock * 30 + s.id) > 0 ? "#fff3a6" : "#ff9f43";
+        g.translate(cx + cs * 0.18 * scale, cy - cs * 0.4 * scale);
+        star(g, 0, 0, cs * 0.09, cs * 0.04);
+        g.fill();
+        g.restore();
+      }
     }
-    // 押している所の予告（消える範囲）
-    if (preview) drawCellMarks(g, preview.cells, "rgba(255,255,255,0.95)", 0.75 + Math.sin(clock * 10) * 0.2);
     g.restore();
     // 演出（ロケット・ボム・レインボー）
     for (const f of fx) drawEffect(g, f);
@@ -2419,190 +1746,15 @@
       }
     }
     g.globalAlpha = 1;
-    // 持ち上げている駒（いちばん上に。盤面のふちからはみ出してもよい）
-    if (lifted && press) {
-      const at = game.find(lifted.id);
-      const lx = Math.max(-0.62, Math.min(0.62, (press.fx - cellX(at[1])) / cs));
-      const ly = Math.max(-0.62, Math.min(0.62, (press.fy - cellY(at[0])) / cs));
-      lifted.x = at[1] + lx;
-      lifted.y = at[0] + ly;
-      g.save();
-      g.translate(view.x, view.y);
-      // 行き先のマスのしるし
-      drawCellMarks(g, [at], "rgba(123,92,255,0.9)", 0.9);
-      g.fillStyle = "rgba(30,20,60,0.22)";
-      ellipse(g, (lifted.x + 0.5) * cs, (lifted.y + 0.98) * cs, cs * 0.36, cs * 0.1);
-      g.fill();
-      drawSprite(g, lifted, null, 1.16, -0.12);
-      g.restore();
-    }
-    // 押している所の説明（何個・何ができる）
-    if (preview && press && !press.dragging) drawPreviewLabel(g);
-    // キーボードのカーソル
-    if (kb.on && phase === "play") {
-      g.save();
-      g.strokeStyle = "#fff";
-      g.lineWidth = 3;
-      g.setLineDash([6, 4]);
-      g.lineDashOffset = -clock * 20;
-      rr(g, view.x + kb.c * cs + 2, view.y + kb.r * cs + 2, cs - 4, cs - 4, 10);
-      g.stroke();
-      g.restore();
-    }
-    // 指のお手本
-    if (tutorial && phase === "play" && !press) drawTutorial(g);
+    // 指のお手本（ステージ1・初めてのブースター）
+    if (tutorial && phase === "play") drawTutorial(g);
     g.restore();
     // 画面がぱっと光る
     const fk = (clock - lastFlashAt) / 0.35;
     if (fk >= 0 && fk < 1) {
-      g.fillStyle = `rgba(255,255,240,${0.4 * (1 - fk)})`;
+      g.fillStyle = `rgba(255,255,240,${0.45 * (1 - fk)})`;
       g.fillRect(0, 0, view.W, view.H);
     }
-  }
-
-  // 駒を1つ描く（scaleUp・lift は持ち上げているとき）
-  function drawSprite(g, s, hint, scaleUp = 1, lift = 0) {
-    const cs = view.cell;
-    let scale = s.scale * scaleUp;
-    let ox = 0;
-    let oy = lift;
-    let sxk = 1;
-    let syk = 1;
-    let rot = s.rot || 0;
-    // 生きている感じ：ゆっくり呼吸・ときどきまばたき
-    if (s.state === "idle" && s.p.t === "c") {
-      const b = Math.sin(clock * 2.2 + s.id * 0.7) * 0.025;
-      syk += b;
-      sxk -= b * 0.6;
-    }
-    if (s.squash) {
-      syk -= 0.22 * s.squash;
-      sxk += 0.14 * s.squash;
-      oy += 0.11 * s.squash;
-    }
-    // 着地のあと、ぽよんと弾む
-    if (s.bounceT !== undefined) {
-      const k = (clock - s.bounceT) / 0.32;
-      if (k >= 0 && k < 1) oy -= s.bounceA * Math.sin(k * Math.PI) * (1 - k * 0.5);
-    }
-    // 押している駒は、ぎゅっとつぶれる
-    if (press && press.id === s.id && !press.dragging) {
-      syk *= 0.86;
-      sxk *= 1.08;
-      oy += 0.06;
-    }
-    if (s.wobble && clock - s.wobble < 0.35) {
-      const k = clock - s.wobble;
-      ox += Math.sin(k * 50) * 0.08 * (1 - k / 0.35);
-    }
-    if (s.jig && clock - s.jig < 0.3) {
-      const k = (clock - s.jig) / 0.3;
-      const w = Math.sin(k * Math.PI * 3) * 0.08 * (1 - k);
-      sxk += w;
-      syk -= w;
-    }
-    if (hint && hint.has(Math.round(s.y) * 100 + Math.round(s.x)) && s.state === "idle") {
-      const w = Math.sin(clock * 9) * 0.06;
-      scale *= 1.06 + w;
-      rot += Math.sin(clock * 9) * 0.06;
-    }
-    // 連鎖の直前：光ってふくらむ
-    let glow = 0;
-    if (s.charge !== undefined && clock - s.charge < 0.6 && s.state !== "pop") {
-      const k = Math.min(1, (clock - s.charge) / 0.18);
-      scale *= 1 + 0.12 * k + Math.sin(clock * 40) * 0.02;
-      glow = 0.55 * k;
-    }
-    if (s.state === "pop") {
-      const k = (clock - s.t0) / 0.22;
-      scale = k < 0.35 ? 1 + 0.28 * (k / 0.35) : 1.28 * (1 - (k - 0.35) / 0.65);
-      s.alpha = 1 - Math.max(0, (k - 0.5) * 2);
-    }
-    if (s.p.t === "disco") rot += clock * 1.5;
-    const blink = s.p.t === "c" && clock > s.blinkAt && clock < s.blinkAt + 0.13;
-    if (s.p.t === "c" && clock > s.blinkAt + 0.13) s.blinkAt = clock + 2 + Math.random() * 7;
-    const img = pieceSprite(s.p, cs, { blink, hp: s.hp });
-    if (!img) return;
-    const cx = (s.x + 0.5 + ox) * cs;
-    const cy = (s.y + 0.5 + oy) * cs;
-    // チャージつきのブースター：金色のオーラ
-    if (s.p.pow > 1 && s.state !== "pop") {
-      const pulse = 0.5 + Math.sin(clock * 6 + s.id) * 0.2;
-      const gr = g.createRadialGradient(cx, cy, cs * 0.1, cx, cy, cs * 0.62);
-      gr.addColorStop(0, `rgba(255,236,120,${0.75 * pulse})`);
-      gr.addColorStop(1, "rgba(255,200,60,0)");
-      g.fillStyle = gr;
-      g.beginPath();
-      g.arc(cx, cy, cs * 0.62, 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = "#fff6b0";
-      const a = clock * 4 + s.id;
-      star(g, cx + Math.cos(a) * cs * 0.42, cy + Math.sin(a) * cs * 0.42, cs * 0.08, cs * 0.035);
-      g.fill();
-    }
-    g.save();
-    g.globalAlpha = s.alpha;
-    g.translate(cx, cy + (1 - syk) * cs * 0.5);
-    if (rot) g.rotate(rot);
-    g.scale(scale * sxk, scale * syk);
-    g.drawImage(img, -cs / 2, -cs / 2, cs, cs);
-    if ((s.flash && clock - s.flash < 0.12) || glow) {
-      g.globalCompositeOperation = "lighter";
-      g.globalAlpha = glow ? glow * (0.7 + Math.sin(clock * 30) * 0.3) : 0.5;
-      g.drawImage(img, -cs / 2, -cs / 2, cs, cs);
-    }
-    g.restore();
-    // ボムの導火線の火花
-    if ((s.p.t === "bomb" || s.p.t === "mini") && s.state !== "pop") {
-      g.save();
-      g.fillStyle = Math.sin(clock * 30 + s.id) > 0 ? "#fff3a6" : "#ff9f43";
-      const fxp = s.p.t === "mini" ? [0.13, -0.33] : [0.18, -0.4];
-      g.translate(cx + cs * fxp[0] * scale, cy + cs * fxp[1] * scale);
-      star(g, 0, 0, cs * (s.p.t === "mini" ? 0.07 : 0.09), cs * 0.035);
-      g.fill();
-      g.restore();
-    }
-  }
-
-  // マスのふちを光らせる（予告・行き先）
-  function drawCellMarks(g, cells, color, alpha) {
-    const cs = view.cell;
-    g.save();
-    g.globalAlpha = alpha;
-    g.strokeStyle = color;
-    g.lineWidth = 3;
-    g.shadowColor = color;
-    g.shadowBlur = 8;
-    for (const [r, c] of cells) {
-      rr(g, c * cs + 2.5, r * cs + 2.5, cs - 5, cs - 5, 10);
-      g.stroke();
-    }
-    g.restore();
-  }
-
-  function drawPreviewLabel(g) {
-    const cs = view.cell;
-    let top = Infinity;
-    let left = Infinity;
-    let right = -Infinity;
-    for (const [r, c] of preview.cells) {
-      top = Math.min(top, r);
-      left = Math.min(left, c);
-      right = Math.max(right, c);
-    }
-    const x = view.x + ((left + right + 1) / 2) * cs;
-    let y = view.y + top * cs - cs * 0.35;
-    if (y < 14) y = view.y + (top + 1) * cs + cs * 0.4;
-    g.font = `900 ${Math.max(12, Math.round(cs * 0.3))}px ${FONT()}`;
-    const w = g.measureText(preview.label).width + 20;
-    const bx = Math.max(4, Math.min(view.W - w - 4, x - w / 2));
-    g.fillStyle = "rgba(43,37,80,0.88)";
-    rr(g, bx, y - cs * 0.24, w, cs * 0.48, cs * 0.24);
-    g.fill();
-    g.fillStyle = "#fff";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText(preview.label, bx + w / 2, y + 1);
   }
 
   function drawEffect(g, f) {
@@ -2693,54 +1845,27 @@
 
   function drawTutorial(g) {
     const t = tutorial;
+    const x = cellX(t.c);
+    const y = cellY(t.r);
     const cs = view.cell;
-    let x;
-    let y;
-    if (t.kind === "drag") {
-      // 指が、From から To へくり返し動く
-      const k = (clock * 0.8) % 1;
-      const e = k < 0.2 ? 0 : k < 0.7 ? (k - 0.2) / 0.5 : 1;
-      const x0 = cellX(t.from[1]);
-      const y0 = cellY(t.from[0]);
-      const x1 = cellX(t.to[1]);
-      const y1 = cellY(t.to[0]);
-      x = x0 + (x1 - x0) * e;
-      y = y0 + (y1 - y0) * e;
-      g.strokeStyle = "rgba(255,255,255,0.85)";
-      g.lineWidth = 5;
-      g.setLineDash([6, 6]);
-      g.beginPath();
-      g.moveTo(x0, y0);
-      g.lineTo(x1, y1);
-      g.stroke();
-      g.setLineDash([]);
-      const img = pieceSprite(game.at(t.from[0], t.from[1]) || { t: "c", color: 0 }, cs);
-      g.globalAlpha = 0.55;
-      if (img) g.drawImage(img, x - cs / 2, y - cs / 2, cs, cs);
-      g.globalAlpha = 1;
-    } else {
-      x = cellX(t.c);
-      y = cellY(t.r);
-      g.strokeStyle = `rgba(255,255,255,${0.6 + Math.sin(clock * 6) * 0.3})`;
-      g.lineWidth = 4;
-      g.beginPath();
-      g.arc(x, y, cs * (0.62 + Math.sin(clock * 6) * 0.06), 0, Math.PI * 2);
-      g.stroke();
-    }
+    // 光る輪
+    g.strokeStyle = `rgba(255,255,255,${0.6 + Math.sin(clock * 6) * 0.3})`;
+    g.lineWidth = 4;
+    g.beginPath();
+    g.arc(x, y, cs * (0.62 + Math.sin(clock * 6) * 0.06), 0, Math.PI * 2);
+    g.stroke();
     // 指
-    const bob = t.kind === "drag" ? 0 : Math.abs(Math.sin(clock * 4)) * cs * 0.25;
+    const bob = Math.abs(Math.sin(clock * 4)) * cs * 0.25;
     g.font = `${Math.round(cs * 1.1)}px sans-serif`;
     g.textAlign = "center";
     g.textBaseline = "top";
     g.fillText("👆", x + cs * 0.15, y + cs * 0.2 + bob);
     // 吹き出し
     const text = t.text;
-    const ax = t.kind === "drag" ? cellX(t.from[1]) : x;
-    const ay = t.kind === "drag" ? cellY(t.from[0]) : y;
-    g.font = `900 ${Math.max(12, Math.round(cs * 0.34))}px ${FONT()}`;
+    g.font = `900 ${Math.max(12, Math.round(cs * 0.34))}px ${getComputedStyle(document.body).fontFamily}`;
     const w = Math.min(view.W - 20, g.measureText(text).width + 28);
-    const bx = Math.max(10, Math.min(view.W - w - 10, ax - w / 2));
-    const by = ay - cs * 1.75 < 4 ? ay + cs * 1.5 : ay - cs * 1.75;
+    const bx = Math.max(10, Math.min(view.W - w - 10, x - w / 2));
+    const by = y - cs * 1.75 < 4 ? y + cs * 1.5 : y - cs * 1.75;
     g.fillStyle = "rgba(255,255,255,0.97)";
     rr(g, bx, by, w, cs * 0.8, cs * 0.3);
     g.fill();
@@ -2752,210 +1877,20 @@
     g.fillText(text, bx + w / 2, by + cs * 0.4, w - 16);
   }
 
-  // COMBO の表示位置：盤面の上のすき間（足りなければ、盤面の上のほうに少し透かして）
-  function comboAnchor() {
-    const br = boardCanvas.getBoundingClientRect();
-    const top = br.top + view.y;
-    const hudBottom = document.querySelector(".pb-scorebar").getBoundingClientRect().bottom;
-    const gap = top - hudBottom;
-    const x = br.left + br.width / 2;
-    if (gap >= 76) return { x, y: hudBottom + gap * 0.42, over: false, room: gap };
-    return { x, y: top + Math.min(50, view.bh * 0.14), over: true, room: 70 };
-  }
-
-  // 大きな COMBO 表示
-  function drawCombo(g, font) {
-    const n = combo.n;
-    if (n === 1 && !combo.show) {
-      // 1 COMBO：軽いポップだけ
-      const k = (clock - combo.t0) / 0.5;
-      if (k < 0 || k >= 1 || phase === "play") return;
-      const a = comboAnchor();
-      g.save();
-      g.globalAlpha = (1 - k) * (a.over ? 0.7 : 0.9);
-      g.translate(a.x, a.y);
-      g.scale(0.9 + 0.1 * Math.min(1, k * 5), 0.9 + 0.1 * Math.min(1, k * 5));
-      g.font = `900 20px ${font}`;
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.lineWidth = 5;
-      g.strokeStyle = "rgba(43,37,80,0.6)";
-      g.strokeText("1 COMBO", 0, 0);
-      g.fillStyle = "#fff";
-      g.fillText("1 COMBO", 0, 0);
-      g.restore();
-      return;
-    }
-    if (!combo.show || n < 2) return;
-    const a = comboAnchor();
-    let alpha = a.over ? 0.86 : 1;
-    // 次の手を考えているときは、盤面が見えるように薄く
-    if (press) alpha *= 0.25;
-    const k = clock - combo.t0;
-    let sc = k < 0.1 ? 0.55 + (k / 0.1) * 0.75 : k < 0.24 ? 1.3 - ((k - 0.1) / 0.14) * 0.3 : 1;
-    let endK = 0;
-    if (combo.ending) {
-      endK = clock - combo.endT0;
-      if (endK < 0.22) sc *= 1 + 0.32 * Math.sin((endK / 0.22) * Math.PI);
-      const life = combo.near ? 1.7 : combo.goalDone ? 1.3 : 1.0;
-      if (endK > life) alpha *= Math.max(0, 1 - (endK - life) / 0.35);
-      if (endK > life + 0.35) {
-        resetCombo();
-        return;
-      }
-    }
-    const tier = Math.min(7, n);
-    // 数字・ほめ言葉・合計の3行が、盤面の上のすき間にだいたい収まる大きさ
-    const fs = Math.round(Math.max(30, Math.min(66, (a.over ? 32 : 40) + tier * 3.6, a.over ? 44 : a.room * 0.46)));
-    const col = tier >= 7 ? `hsl(${(clock * 300) % 360},95%,55%)` : TIER_COLORS[tier];
-    g.save();
-    g.globalAlpha = alpha;
-    g.translate(a.x, a.y - (a.over ? 0 : fs * 0.15));
-    g.save();
-    g.scale(sc, sc);
-    g.rotate(-0.05);
-    g.lineJoin = "round";
-    // 数字 + COMBO
-    g.textBaseline = "alphabetic";
-    g.font = `900 ${fs}px ${font}`;
-    const numW = g.measureText(String(n)).width;
-    g.font = `900 ${Math.round(fs * 0.42)}px ${font}`;
-    const lblW = g.measureText("COMBO").width;
-    const total = numW + 6 + lblW;
-    const x0 = -total / 2;
-    g.font = `900 ${fs}px ${font}`;
-    g.textAlign = "left";
-    g.lineWidth = fs * 0.2;
-    g.strokeStyle = "#fff";
-    g.strokeText(String(n), x0, fs * 0.33);
-    g.fillStyle = col;
-    g.fillText(String(n), x0, fs * 0.33);
-    g.font = `900 ${Math.round(fs * 0.42)}px ${font}`;
-    g.lineWidth = fs * 0.12;
-    g.strokeText("COMBO", x0 + numW + 6, fs * 0.33);
-    g.fillStyle = "#2b2550";
-    g.fillText("COMBO", x0 + numW + 6, fs * 0.33);
-    // 倍率
-    if (combo.mult > 1) {
-      g.font = `900 ${Math.round(fs * 0.3)}px ${font}`;
-      const mt = `×${combo.mult.toFixed(1)}`;
-      const mw = g.measureText(mt).width + 12;
-      const mx = x0 + numW + 6 + lblW - mw;
-      const my = -fs * 0.48;
-      g.fillStyle = col;
-      rr(g, mx, my - fs * 0.2, mw, fs * 0.4, fs * 0.2);
-      g.fill();
-      g.fillStyle = "#fff";
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.fillText(mt, mx + mw / 2, my + 1);
-    }
-    g.restore();
-    // ほめ言葉（NICE! … FEVER!）
-    let below = fs * 0.62;
-    if (combo.word) {
-      const wk = clock - combo.wordT0;
-      const ws = wk < 0.12 ? 0.4 + (wk / 0.12) * 0.9 : wk < 0.26 ? 1.3 - ((wk - 0.12) / 0.14) * 0.3 : 1;
-      const wf = Math.round(fs * 0.56);
-      g.save();
-      g.translate(0, below + wf * 0.35);
-      g.scale(ws, ws);
-      g.rotate(0.04);
-      g.font = `900 ${wf}px ${font}`;
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.lineJoin = "round";
-      g.lineWidth = wf * 0.26;
-      g.strokeStyle = col;
-      g.strokeText(combo.word, 0, 0);
-      g.fillStyle = "#fff";
-      g.fillText(combo.word, 0, 0);
-      g.restore();
-      below += wf * 0.95;
-    }
-    // とまった瞬間：このターンの合計点と、「あと1コンボ！」
-    if (combo.ending) {
-      const tf = Math.round(fs * 0.36);
-      g.font = `900 ${tf}px ${font}`;
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.lineWidth = tf * 0.3;
-      g.strokeStyle = "rgba(43,37,80,0.75)";
-      const tt = `+${combo.total.toLocaleString()}`;
-      const rise = Math.min(1, endK / 0.25);
-      g.globalAlpha = alpha * rise;
-      g.strokeText(tt, 0, below + tf * 0.2 - rise * 4);
-      g.fillStyle = "#ffe36b";
-      g.fillText(tt, 0, below + tf * 0.2 - rise * 4);
-      if (combo.goalDone && !combo.near && endK > 0.2) {
-        const gf = Math.round(fs * 0.42);
-        g.font = `900 ${gf}px ${font}`;
-        g.lineWidth = gf * 0.28;
-        g.strokeStyle = "#fff";
-        g.strokeText("目標クリア！", 0, below + tf + gf * 0.5);
-        g.fillStyle = "#21b35a";
-        g.fillText("目標クリア！", 0, below + tf + gf * 0.5);
-      }
-      if (combo.near && endK > 0.25) {
-        const nk = endK - 0.25;
-        const ns = nk < 0.12 ? 0.5 + (nk / 0.12) * 0.7 : 1.2 - Math.min(0.2, (nk - 0.12) * 1.5);
-        const nf = Math.round(fs * 0.5);
-        g.save();
-        g.translate(Math.sin(nk * 30) * 3 * Math.max(0, 1 - nk * 2), below + tf + nf * 0.6);
-        g.scale(ns, ns);
-        g.font = `900 ${nf}px ${font}`;
-        g.lineWidth = nf * 0.26;
-        g.strokeStyle = "#fff";
-        g.strokeText("あと1コンボ！", 0, 0);
-        g.fillStyle = "#ff3d7f";
-        g.fillText("あと1コンボ！", 0, 0);
-        g.restore();
-      }
-    }
-    g.restore();
-  }
-
-  // 大きな COMBO のときの、画面のふちの光（盤面のまんなかは隠さない）
-  function drawEdgeGlow(g) {
-    if (!combo.show || combo.n < 4) return;
-    let a = Math.min(1, (combo.n - 3) / 4) * 0.4 * (0.75 + Math.sin(clock * 8) * 0.25);
-    if (combo.ending) a *= Math.max(0, 1 - (clock - combo.endT0) / 0.8);
-    if (a <= 0.01) return;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    const col = combo.n >= 7 ? `hsla(${(clock * 300) % 360},100%,60%,` : `rgba(${["255,217,59", "255,138,61", "255,77,138"][Math.min(2, combo.n - 4)]},`;
-    const d = Math.min(46, W * 0.1);
-    const mk = (x0, y0, x1, y1) => {
-      const gr = g.createLinearGradient(x0, y0, x1, y1);
-      gr.addColorStop(0, col + a + ")");
-      gr.addColorStop(1, col + "0)");
-      return gr;
-    };
-    g.fillStyle = mk(0, 0, d, 0);
-    g.fillRect(0, 0, d, H);
-    g.fillStyle = mk(W, 0, W - d, 0);
-    g.fillRect(W - d, 0, d, H);
-    g.fillStyle = mk(0, H, 0, H - d);
-    g.fillRect(0, H - d, W, d);
-  }
-
-  // 演出 canvas：目標アイコンへ飛ぶぽよ・点数・COMBO・ほめ言葉・紙ふぶき
+  // 演出 canvas：目標アイコンへ飛ぶぽよ・点数・ほめ言葉・紙ふぶき
   function drawFx(dt) {
     const dpr = DPR();
     const g = fctx;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    const font = FONT();
-    if (app.dataset.screen === "game" && game) drawEdgeGlow(g);
+    const font = getComputedStyle(document.body).fontFamily;
     // 目標へ飛ぶ
     const size = Math.max(26, view.cell * 0.8);
     flyers = flyers.filter((f) => {
       const k = (clock - f.t0) / f.dur;
       if (k < 0) {
-        if (f.piece.t !== "comboBadge") {
-          const img = pieceSprite(f.piece, Math.round(size));
-          if (img) g.drawImage(img, f.x0 - size / 2, f.y0 - size / 2, size, size);
-        }
+        const img = pieceSprite(f.piece, Math.round(size));
+        if (img) g.drawImage(img, f.x0 - size / 2, f.y0 - size / 2, size, size);
         return true;
       }
       if (k >= 1) {
@@ -2967,7 +1902,7 @@
       const my = Math.min(f.y0, f.y1) - 40;
       const x = (1 - e) * (1 - e) * f.x0 + 2 * (1 - e) * e * mx + e * e * f.x1;
       const y = (1 - e) * (1 - e) * f.y0 + 2 * (1 - e) * e * my + e * e * f.y1;
-      const s = size * (1 - 0.3 * e) * (f.piece.t === "comboBadge" ? 1.3 : 1);
+      const s = size * (1 - 0.3 * e);
       const img = pieceSprite(f.piece, Math.round(size));
       if (img) g.drawImage(img, x - s / 2, y - s / 2, s, s);
       return true;
@@ -2981,37 +1916,22 @@
       g.save();
       g.textAlign = "center";
       g.textBaseline = "middle";
-      if (f.kind === "score" || f.kind === "label") {
+      if (f.kind === "score") {
         const x = br.left + f.x;
-        const y = br.top + f.y - k * 46;
-        const pop = k < 0.12 ? 0.6 + (k / 0.12) * 0.55 : k < 0.22 ? 1.15 - ((k - 0.12) / 0.1) * 0.15 : 1;
+        const y = br.top + f.y - k * 50;
         g.globalAlpha = 1 - k * k;
-        g.translate(x, y);
-        g.scale(pop, pop);
-        const n = f.n || 1;
-        const fs = f.kind === "label" ? 16 : Math.round(17 + Math.min(7, (n - 1) * 1.6) + Math.min(5, view.cell * 0.07));
-        g.font = `900 ${fs}px ${font}`;
-        g.lineJoin = "round";
-        g.lineWidth = fs * 0.28;
-        g.strokeStyle = f.gold ? "#c98a00" : n >= 2 ? TIER_COLORS[Math.min(7, n)] : "#5a3dbf";
-        g.strokeText(f.text, 0, 0);
-        g.fillStyle = f.gold ? "#fff6b0" : "#fff";
-        g.fillText(f.text, 0, 0);
-        if (f.mult > 1) {
-          const tw = g.measureText(f.text).width;
-          g.font = `900 ${Math.round(fs * 0.55)}px ${font}`;
-          g.lineWidth = fs * 0.18;
-          g.strokeText(`×${f.mult.toFixed(1)}`, tw / 2 + fs * 0.7, -fs * 0.35);
-          g.fillStyle = "#ffe36b";
-          g.fillText(`×${f.mult.toFixed(1)}`, tw / 2 + fs * 0.7, -fs * 0.35);
-        }
+        g.font = `900 ${Math.round(18 + Math.min(8, view.cell * 0.12))}px ${font}`;
+        g.lineWidth = 5;
+        g.strokeStyle = "#5a3dbf";
+        g.strokeText(f.text, x, y);
+        g.fillStyle = "#fff";
+        g.fillText(f.text, x, y);
       } else {
         const cx = br.left + br.width / 2;
         let cy = br.top + br.height * 0.42;
         if (f.kind === "tip") {
           // ひとことは盤面の上のすき間に。すき間が足りなければ下、それもなければ盤面の上端
-          const top = br.top + view.y;
-          const bottom = top + view.bh;
+          const top = br.top + view.y, bottom = top + view.bh;
           const hudBottom = document.querySelector(".pb-scorebar").getBoundingClientRect().bottom;
           if (top - hudBottom >= 54) cy = (hudBottom + top) / 2;
           else if (window.innerHeight - bottom >= 70) cy = bottom + 34;
@@ -3034,13 +1954,13 @@
           g.fillStyle = "#2b2550";
           g.fillText(f.text, 0, 1, w - 20);
         } else {
-          const big = f.kind === "clear" ? 1.25 : f.kind === "fusion" ? 1.0 : 0.9;
+          const big = f.kind === "clear" ? 1.25 : f.kind === "combo" ? 1.1 : 1;
           const fs = Math.round(Math.min(56, window.innerWidth / 8) * big);
           g.font = `900 ${fs}px ${font}`;
           g.rotate(-0.06);
           g.lineJoin = "round";
           g.lineWidth = fs * 0.22;
-          g.strokeStyle = f.kind === "clear" ? "#d6306f" : f.kind === "fusion" ? "#5a3dbf" : "#e07b00";
+          g.strokeStyle = f.kind === "clear" ? "#d6306f" : f.kind === "combo" ? "#5a3dbf" : "#e07b00";
           g.strokeText(f.text, 0, 0, window.innerWidth - 20);
           const grad = g.createLinearGradient(0, -fs / 2, 0, fs / 2);
           grad.addColorStop(0, "#ffffff");
@@ -3052,7 +1972,6 @@
       g.restore();
       return true;
     });
-    if (app.dataset.screen === "game" && game) drawCombo(g, font);
     // 紙ふぶき
     for (const c of confetti) {
       c.life += dt;
@@ -3083,43 +2002,14 @@
     get level() { return level ? level.id : null; },
     get moves() { return game ? game.moves : null; },
     get score() { return game ? game.score : null; },
-    get goals() { return game ? game.goals.map((g) => ({ type: g.type, color: g.color, min: g.min, left: g.left, shown: goalShown[game.goals.indexOf(g)] })) : null; },
+    get goals() { return game ? game.goals.map((g) => ({ type: g.type, color: g.color, left: g.left, shown: goalShown[game.goals.indexOf(g)] })) : null; },
     get save() { return JSON.parse(JSON.stringify(save)); },
-    get comboLog() { return comboLog.slice(); },
-    get combo() { return { n: combo.n, show: combo.show, word: combo.word, ending: combo.ending, near: combo.near }; },
-    get maxCombo() { return maxComboPlay; },
-    get drag() { return game && game.drag ? { used: game.dragStepsUsed(), path: game.drag.path.map((p) => p.slice()) } : null; },
     // 盤面のマスの画面上の位置（テストでタップするため）
     cellPoint(r, c) {
       const b = boardCanvas.getBoundingClientRect();
       return { x: b.left + cellX(c), y: b.top + cellY(r) };
     },
-    cell(r, c) {
-      const p = game && game.at(r, c);
-      return p ? { t: p.t, color: p.color, pow: p.pow || 1 } : p;
-    },
-    options() { return game ? game.options().map(({ r, c, size, kind, color, t }) => ({ r, c, size, kind, color, t })) : []; },
-    // 先読み（テスト用）：ドラッグ（path）してからタップ（tap）すると何 COMBO になるか。補充は別の乱数
-    simulate(drag, tap) {
-      const h = game.clone(12345);
-      if (drag) {
-        if (!h.pick(drag.r, drag.c)) return null;
-        let r = drag.r;
-        let c = drag.c;
-        for (const [dy, dx] of drag.path) {
-          if (!h.step(r + dy, c + dx)) return null;
-          r += dy;
-          c += dx;
-        }
-        h.release();
-      }
-      if (!h.tap(tap.r, tap.c)) return null;
-      for (let k = 0; k < 60; k++) {
-        h.collapse();
-        if (!h.cascade()) break;
-      }
-      return h.endTurn().combo;
-    },
+    options() { return game ? game.options().map(({ r, c, size, kind, color }) => ({ r, c, size, kind, color })) : []; },
     stats() { return { sprites: sprites.size, particles: particles.length, fx: fx.length, flyers: flyers.length, confetti: confetti.length, cache: spriteCache.size, cell: view.cell }; },
   };
 
@@ -3128,5 +2018,13 @@
   requestAnimationFrame((t) => {
     lastT = t;
     frame(t);
+  });
+  // キーボード：Enter で開いているポップアップの主ボタン
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && app.dataset.screen === "game" && phase !== "end") {
+      const m = $("pb-pausemenu");
+      if (m.classList.contains("show")) showModal(null);
+      else showModal("pb-pausemenu");
+    }
   });
 })();

@@ -1,44 +1,81 @@
-// ぽよぽよブラスト：ステージ
+// ぽよぽよブラスト V2：ステージ
 //
 // layout の文字：
 //   "." 色のぽよ（ランダム） / " " 盤面の外 / "0"〜"4" 決まった色のぽよ
 //   "B" 木箱 / "b" 木箱（2回） / "S" 石 / "L" ふうせん / "G" プレゼント
 // colors：使う色の数（0 赤・1 黄・2 青・3 緑・4 紫）
-// goals：{ type: "color", color, count } / { type: "box" | "stone" | "balloon" | "gift", count }
+// goals：
+//   { type: "color", color, count }               その色のぽよを count 個
+//   { type: "box" | "stone" | "balloon" | "gift", count }
+//   { type: "combo", min, count }                 min COMBO 以上を count 回
+//   { type: "use", booster: "mini" | "rocket" | "bomb" | "disco" | "any", count }  そのブースターを count 回発動
+//   { type: "fusion", count }                     ブースターの合体を count 回
 // stars：2つ星・3つ星になる点数（1つ星はクリア）。scripts/check-blast.js のボットで決めた目安
-// tip：ステージの始めに出す、ひとことの説明
+// tip：ステージの始めに出す、ひとことの説明 / tutorial：指のお手本（"tap" "drag" "chain"）
 
 const POP_LEVELS = [
   {
     id: 1,
     cols: 7,
     rows: 7,
-    colors: 3,
-    moves: 18,
-    goals: [{ type: "color", color: 0, count: 15 }],
-    stars: [8000, 8900],
+    colors: 4,
+    moves: 14,
+    goals: [{ type: "color", color: 0, count: 14 }],
+    stars: [11000, 16400],
     tip: "同じ色が2つ以上くっついている所をタップ！",
-    tutorial: true,
+    tutorial: "tap",
   },
   {
     id: 2,
     cols: 7,
     rows: 8,
     colors: 4,
-    moves: 20,
-    goals: [
-      { type: "color", color: 2, count: 18 },
-      { type: "color", color: 3, count: 18 },
+    moves: 16,
+    layout: [
+      ".......",
+      ".......",
+      ".......",
+      ".......",
+      ".......",
+      "1210213",
+      "3002031",
+      "1313132",
     ],
-    stars: [7300, 9000],
-    tip: "5個以上まとめて消すと「ロケット」ができる！",
+    goals: [
+      { type: "use", booster: "mini", count: 1 },
+      { type: "color", color: 2, count: 14 },
+    ],
+    stars: [14100, 32400],
+    tip: "ぽよはドラッグで2マスまで動かせる。4つそろえてタップで「ぷちボム」！",
+    tutorial: "drag",
   },
   {
     id: 3,
-    cols: 8,
+    cols: 7,
     rows: 8,
     colors: 4,
-    moves: 22,
+    moves: 15,
+    layout: [
+      ".......",
+      ".......",
+      ".......",
+      ".......",
+      ".......",
+      "...0...",
+      "...2...",
+      "0002...",
+    ],
+    goals: [{ type: "combo", min: 2, count: 3 }],
+    stars: [13700, 22800],
+    tip: "落ちてきたぽよが4つそろうと、自動で消える＝連鎖！",
+    tutorial: "chain",
+  },
+  {
+    id: 4,
+    cols: 8,
+    rows: 8,
+    colors: 5,
+    moves: 18,
     layout: [
       "........",
       "........",
@@ -49,16 +86,19 @@ const POP_LEVELS = [
       "........",
       "........",
     ],
-    goals: [{ type: "box", count: 10 }],
-    stars: [8800, 10100],
-    tip: "木箱は、となりで消すと壊れるよ。",
+    goals: [
+      { type: "box", count: 10 },
+      { type: "combo", min: 2, count: 3 },
+    ],
+    stars: [12100, 23400],
+    tip: "5色になった！ 消す前に「どれが落ちてくるか」を見よう。",
   },
   {
-    id: 4,
+    id: 5,
     cols: 8,
     rows: 9,
-    colors: 4,
-    moves: 23,
+    colors: 5,
+    moves: 20,
     layout: [
       "........",
       "........",
@@ -71,18 +111,18 @@ const POP_LEVELS = [
       "..L..L..",
     ],
     goals: [
+      { type: "use", booster: "rocket", count: 3 },
       { type: "balloon", count: 8 },
-      { type: "color", color: 1, count: 25 },
     ],
-    stars: [9600, 11500],
-    tip: "7個以上で「ボム」！ ふうせんは、となりで消すと割れる。",
+    stars: [16600, 30400],
+    tip: "5つでロケット。連鎖で消えると、少ない数でも強いブースターになる！",
   },
   {
-    id: 5,
+    id: 6,
     cols: 8,
     rows: 9,
-    colors: 4,
-    moves: 24,
+    colors: 5,
+    moves: 20,
     layout: [
       "  ....  ",
       " ...... ",
@@ -95,39 +135,18 @@ const POP_LEVELS = [
       "  ....  ",
     ],
     goals: [
-      { type: "color", color: 0, count: 30 },
-      { type: "color", color: 2, count: 30 },
+      { type: "combo", min: 3, count: 2 },
+      { type: "color", color: 0, count: 25 },
     ],
-    stars: [8400, 10600],
-    tip: "9個以上で「レインボー」！ その色をぜんぶ消す。",
-  },
-  {
-    id: 6,
-    cols: 8,
-    rows: 9,
-    colors: 4,
-    moves: 25,
-    layout: [
-      "........",
-      "........",
-      "........",
-      "B.bBBb.B",
-      "........",
-      "........",
-      "BbB..BbB",
-      "........",
-      "........",
-    ],
-    goals: [{ type: "box", count: 12 }],
-    stars: [9400, 11200],
-    tip: "ブースター同士がとなりなら、タップで合体して超強力に！",
+    stars: [15000, 26000],
+    tip: "3 COMBO を2回！ 2段がまえの連鎖を仕込もう。",
   },
   {
     id: 7,
     cols: 8,
     rows: 9,
-    colors: 4,
-    moves: 24,
+    colors: 5,
+    moves: 22,
     layout: [
       "..G..G..",
       "........",
@@ -141,17 +160,17 @@ const POP_LEVELS = [
     ],
     goals: [
       { type: "gift", count: 3 },
-      { type: "color", color: 3, count: 30 },
+      { type: "combo", min: 3, count: 2 },
     ],
-    stars: [9800, 12700],
-    tip: "プレゼントを、いちばん下まで落とそう！",
+    stars: [19800, 28900],
+    tip: "プレゼントは、いちばん下まで落とそう！",
   },
   {
     id: 8,
     cols: 9,
     rows: 9,
-    colors: 4,
-    moves: 33,
+    colors: 5,
+    moves: 26,
     layout: [
       ".........",
       ".........",
@@ -166,16 +185,41 @@ const POP_LEVELS = [
     goals: [
       { type: "stone", count: 4 },
       { type: "box", count: 8 },
+      { type: "use", booster: "bomb", count: 1 },
     ],
-    stars: [11800, 14700],
-    tip: "石は、ブースターでしか壊れない！",
+    stars: [30100, 37200],
+    tip: "石はブースターでしか壊れない！ 6つでボム。",
   },
   {
     id: 9,
+    cols: 8,
+    rows: 9,
+    colors: 5,
+    moves: 22,
+    layout: [
+      "........",
+      "........",
+      ".R..O...",
+      "L......L",
+      "........",
+      "..L..L..",
+      "...M..V.",
+      "L.L..L.L",
+      "........",
+    ],
+    goals: [
+      { type: "fusion", count: 2 },
+      { type: "balloon", count: 8 },
+    ],
+    stars: [23600, 31200],
+    tip: "ブースターもドラッグできる。となりに並べてタップ＝合体！",
+  },
+  {
+    id: 10,
     cols: 9,
     rows: 10,
-    colors: 4,
-    moves: 28,
+    colors: 5,
+    moves: 24,
     spawnBalloons: 0.05,
     layout: [
       " ....... ",
@@ -190,18 +234,32 @@ const POP_LEVELS = [
       " ....... ",
     ],
     goals: [
+      { type: "combo", min: 4, count: 1 },
       { type: "balloon", count: 14 },
       { type: "gift", count: 2 },
     ],
-    stars: [13400, 16200],
-    tip: "上からも、ふうせんが降ってくる！",
+    stars: [28900, 37500],
+    tip: "4 COMBO に挑戦！ 上からふうせんも降ってくる。",
   },
   {
-    id: 10,
+    id: 11,
+    cols: 9,
+    rows: 9,
+    colors: 5,
+    moves: 24,
+    goals: [
+      { type: "combo", min: 5, count: 1 },
+      { type: "color", color: 2, count: 40 },
+    ],
+    stars: [25800, 37200],
+    tip: "5 COMBO を1回！ 下から順に、段を重ねて仕込もう。",
+  },
+  {
+    id: 12,
     cols: 9,
     rows: 10,
-    colors: 4,
-    moves: 32,
+    colors: 5,
+    moves: 30,
     layout: [
       " ... ... ",
       ".........",
@@ -217,10 +275,10 @@ const POP_LEVELS = [
     goals: [
       { type: "box", count: 8 },
       { type: "stone", count: 3 },
-      { type: "color", color: 3, count: 35 },
+      { type: "combo", min: 4, count: 2 },
     ],
-    stars: [10400, 13100],
-    tip: "最後のステージ！ ハートの形をクリアしよう。",
+    stars: [30300, 37000],
+    tip: "最後のステージ！ 4 COMBO を2回決めよう。",
   },
 ];
 
