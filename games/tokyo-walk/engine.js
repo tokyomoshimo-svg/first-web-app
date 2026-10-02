@@ -9,110 +9,146 @@ const TokyoWalkEngine = (() => {
   const FIELD = 40; // フィールドは -40〜40 の正方形
   const ROAD = 4; // 道路の半幅（交差点を中心に東西・南北の2本）
   const SIDEWALK = 7; // 歩道の外側の位置
+  const FRONT = 8; // 建物の正面の線（歩道の外側に少しだけ私有地の舗装）
+  const CURB = ROAD + 0.55; // 街灯・電柱・街路樹を並べる線（車道寄り。歩く場所をふさがない）
 
   const PLAYER = {
     radius: 0.4,
     walkSpeed: 3.4, // m/秒（小走りくらい）
-    accel: 14,
+    accel: 16, // 歩き出し
+    decel: 22, // 止まるとき（指を離したらすぐ止まる）
     gravity: 20,
     jumpSpeed: 6.6, // 最高到達点 約1.1m
   };
 
   // ---------- 街のデータ ----------
 
-  // 建物：中心(x,z)、幅w(東西)、奥行きd(南北)、高さh、色、外壁の種類style、
-  // 1階のお店 shop / 袖看板 vsign / 屋上看板 sign（すべて架空の店）
+  // 長方形 [x0, x1] × [z0, z1] を中心・幅・奥行きに直す
+  const rect = (x0, x1, z0, z1) => ({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 });
+
+  // お店の入った建物（すべて架空の店）。道路に面して建ち並び、すき間は細い路地になる。
+  //   face: 正面が東西の向き（"x"）か南北の向き（"z"）か。正面は必ず道路側
   //   style: apartment（マンション）・office（オフィス）・mixed（雑居ビル）・old（古いビル）
+  //   shop / vsign（袖看板）/ sign（屋上看板）
   const BUILDINGS = [
-    // 北東ブロック（もう1区画はコインパーキング）
-    { x: 14, z: -14, w: 10, d: 9, h: 14, color: "#efc2b3", style: "mixed", shop: "Cafe こもれび", shopKind: "cafe", vsign: "喫茶", sign: "カフェ" },
-    { x: 13, z: -30, w: 9, d: 11, h: 20, color: "#c9d3e6", style: "office", shop: "まちかど不動産", shopKind: "realty", vsign: "不動産", sign: "TOKYO" },
-    { x: 29, z: -30, w: 12, d: 11, h: 11, color: "#efe2c2", style: "apartment", shop: "さくら歯科", shopKind: "dental", vsign: "歯科" },
+    // 北東ブロック（東西の道路沿いにはコインパーキング）
+    { ...rect(8, 17.5, -17, -8), h: 14, face: "x", color: "#d9cfc0", style: "mixed", shop: "Cafe こもれび", shopKind: "cafe", vsign: "喫茶", sign: "カフェ" },
+    { ...rect(8, 17, -29, -18.5), h: 20, face: "x", color: "#c9d0d4", style: "office", shop: "まちかど不動産", shopKind: "realty", vsign: "不動産", sign: "TOKYO" },
+    { ...rect(8, 18, -39.5, -30.2), h: 11, face: "x", color: "#e9e4da", style: "apartment", shop: "さくら歯科", shopKind: "dental", vsign: "歯科" },
     // 北西ブロック
-    { x: -14, z: -13, w: 10, d: 8, h: 10, color: "#d6e6cf", style: "old", shop: "らーめん 夜なき", shopKind: "ramen", vsign: "ラーメン", sign: "ラーメン" },
-    { x: -30, z: -14, w: 11, d: 10, h: 16, color: "#f0d3dc", style: "apartment", shop: "Hair nami", shopKind: "salon", vsign: "美容室" },
-    { x: -14, z: -30, w: 10, d: 11, h: 8, color: "#ead9c0", style: "old", shop: "しろたえクリーニング", shopKind: "cleaning", vsign: "クリーニング" },
-    { x: -30, z: -30, w: 11, d: 11, h: 13, color: "#ccd2e8", style: "office", shop: "居酒屋 とりあえず", shopKind: "izakaya", vsign: "居酒屋", sign: "居酒屋" },
+    { ...rect(-17, -8, -16.5, -8), h: 10, face: "z", color: "#9c8571", style: "old", shop: "らーめん 夜なき", shopKind: "ramen", vsign: "ラーメン", sign: "ラーメン" },
+    { ...rect(-39.5, -30.3, -18, -8), h: 16, face: "z", color: "#e3d3cf", style: "apartment", shop: "Hair nami", shopKind: "salon", vsign: "美容室" },
+    { ...rect(-15.5, -8, -27, -18), h: 8, face: "x", color: "#c7cbc6", style: "old", shop: "しろたえクリーニング", shopKind: "cleaning", vsign: "クリーニング" },
+    { ...rect(-29, -18.5, -17, -8), h: 13, face: "z", color: "#a9aaa6", style: "office", shop: "居酒屋 とりあえず", shopKind: "izakaya", vsign: "居酒屋", sign: "居酒屋" },
     // 南東ブロック
-    { x: 14, z: 14, w: 10, d: 10, h: 12, color: "#cfe0ec", style: "mixed", shop: "本のしおり堂", shopKind: "books", vsign: "古本", sign: "本屋" },
-    { x: 30, z: 13, w: 11, d: 9, h: 7, color: "#f0d2bd", style: "old", shop: "お弁当 こまち", shopKind: "bento", vsign: "弁当" },
-    { x: 14, z: 30, w: 10, d: 11, h: 9, color: "#e6e8c8", style: "apartment", shop: "くすりのミドリ", shopKind: "drug", vsign: "薬" },
-    { x: 30, z: 30, w: 11, d: 11, h: 17, color: "#e3cfe0", style: "mixed", shop: "富士見湯", shopKind: "sento", vsign: "ゆ", sign: "銭湯" },
-    // 南西ブロック（半分は小さな公園）
-    { x: -14, z: 14, w: 10, d: 9, h: 11, color: "#f2d9b8", style: "office", shop: "ひまマート", shopKind: "conbini", vsign: "コンビニ", sign: "24H" },
-    { x: -30, z: 30, w: 11, d: 11, h: 9, color: "#d3e3d6", style: "apartment", shop: "花のアトリエ", shopKind: "flower", vsign: "花" },
+    { ...rect(8, 17.5, 8, 17), h: 12, face: "z", color: "#c9b49c", style: "mixed", shop: "本のしおり堂", shopKind: "books", vsign: "古本", sign: "本屋" },
+    { ...rect(19, 26, 8, 15), h: 7, face: "z", color: "#efe9df", style: "old", shop: "お弁当 こまち", shopKind: "bento", vsign: "弁当" },
+    { ...rect(8, 17, 19, 28.5), h: 9, face: "x", color: "#e2dccf", style: "apartment", shop: "くすりのミドリ", shopKind: "drug", vsign: "薬" },
+    { ...rect(27.5, 39.5, 8, 19), h: 17, face: "z", color: "#c4917c", style: "mixed", shop: "富士見湯", shopKind: "sento", vsign: "ゆ", sign: "銭湯" },
+    // 南西ブロック（東西の道路沿いは小さな公園）
+    { ...rect(-17.5, -8, 8, 16.5), h: 11, face: "x", color: "#e9e4da", style: "office", shop: "ひまマート", shopKind: "conbini", vsign: "コンビニ", sign: "24H" },
+    { ...rect(-16, -8, 18, 26.5), h: 9, face: "x", color: "#d8c8b6", style: "apartment", shop: "花のアトリエ", shopKind: "flower", vsign: "花" },
+  ];
+
+  // お店のない建物（道路沿いのすき間を埋める）。ground: 1階の見た目（shutter / residence / lobby）
+  const INFILL = [
+    { ...rect(19, 24, -15.5, -8), h: 7, face: "z", color: "#a3abb1", style: "old", ground: "residence" },
+    { ...rect(36.2, 44, -15, -8), h: 9, face: "z", color: "#c8c3ba", style: "apartment", ground: "shutter" },
+    { ...rect(-14, -8, -35, -28.2), h: 12, face: "x", color: "#c2a48c", style: "mixed", ground: "shutter" },
+    { ...rect(-16, -8, -44, -36.2), h: 9, face: "x", color: "#e9e4da", style: "apartment", ground: "residence" },
+    { ...rect(8, 14.5, 30, 36), h: 6, face: "x", color: "#b9c2c0", style: "old", ground: "residence" },
+    { ...rect(8, 18, 37.5, 46), h: 14, face: "x", color: "#cdd3d6", style: "office", ground: "lobby" },
+    { ...rect(-13.5, -8, 28, 33.5), h: 7, face: "x", color: "#b9a48f", style: "old", ground: "shutter" },
+    { ...rect(-17, -8, 35, 44), h: 15, face: "x", color: "#ede6da", style: "apartment", ground: "residence" },
+    { ...rect(-44, -36.5, 8, 20), h: 18, face: "z", color: "#c9d0d4", style: "office", ground: "lobby" },
+  ];
+
+  // 道路沿いの建物の裏（区画の内側）。上の階が道路から見えて、街の奥行きになる
+  const BACKS = [
+    { ...rect(17.5, 32, -29.5, -17.6), h: 16, color: "#d8d2c8", style: "apartment" },
+    { ...rect(18.5, 34, -44, -30), h: 23, color: "#c9d0d4", style: "office" },
+    { ...rect(32, 44, -30, -17.2), h: 12, color: "#bcc6cc", style: "mixed" },
+    { ...rect(-31, -16, -30, -17.3), h: 18, color: "#cdbfae", style: "apartment" },
+    { ...rect(-44, -30, -44, -19), h: 24, color: "#8f9599", style: "office" },
+    { ...rect(-29.5, -16.2, -44, -30.5), h: 15, color: "#e9e4da", style: "apartment" },
+    { ...rect(18.5, 27, 16.5, 30), h: 13, color: "#e3d7c6", style: "mixed" },
+    { ...rect(27, 44, 20.5, 44), h: 20, color: "#d5d9dc", style: "apartment" },
+    { ...rect(18.5, 27, 31.5, 44), h: 11, color: "#c8c3ba", style: "old" },
+    { ...rect(-36, -17.5, 26, 44), h: 14, color: "#c6b8a6", style: "apartment" },
+    { ...rect(-44, -36.3, 20.5, 44), h: 21, color: "#c9d0d4", style: "office" },
   ];
 
   // コインパーキング（北東ブロックの空き地）
   const PARKING = { minX: 24.5, maxX: 35.5, minZ: -17, maxZ: -9, spaces: 4 };
 
-  // 小物。collider: { r } = 円、{ w, d } = 箱（rot 1・3 は90度回転）
+  // 小物。当たり判定：{ r } = 円、{ w, d } = 箱（rot 1・3 は90度回転）。
+  // solid: false の小物は見た目だけ（歩くのをじゃましない）。当たり判定は見た目より小さくてよい
   const PROPS = [];
   const add = (p) => PROPS.push(p);
+  // 道路沿いの「線」：arm = 東(E)・西(W)・南(S)・北(N) の腕、side = 道路のどちら側か(±1)、t = 交差点からの距離
+  const onCurb = (arm, side, t, off = CURB) => {
+    if (arm === "E") return { x: t, z: side * off };
+    if (arm === "W") return { x: -t, z: side * off };
+    if (arm === "S") return { x: side * off, z: t };
+    return { x: side * off, z: -t };
+  };
+  const ARMS = ["E", "W", "S", "N"];
 
-  // 街灯：歩道の外側に等間隔
-  for (const s of [-1, 1]) {
-    for (const t of [-34, -22, -10, 10, 22, 34]) {
-      add({ kind: "lamp", x: t, z: s * (SIDEWALK - 0.5), r: 0.2 });
-      add({ kind: "lamp", x: s * (SIDEWALK - 0.5), z: t, r: 0.2 });
-    }
-  }
-  // 街路樹
-  for (const [x, z] of [[-16, 6], [16, -6], [6, 30], [-6, -18], [-6, 30], [6, -32], [28, 6], [-28, -6]]) {
-    add({ kind: "tree", x, z, r: 0.55 });
+  // 街灯：車道寄りに等間隔
+  for (const arm of ARMS) for (const side of [-1, 1]) for (const t of [10, 22, 34]) add({ kind: "lamp", ...onCurb(arm, side, t), r: 0.12 });
+  // 電柱：車道寄り。同じ側の電柱を電線でつなぐ
+  for (const arm of ARMS) for (const side of [-1, 1]) for (const t of [16, 28]) add({ kind: "pole", ...onCurb(arm, side, t), r: 0.18, line: arm + side });
+  // 街路樹（車道寄り、街灯と電柱のあいだ）
+  for (const [arm, side, t] of [["E", -1, 25], ["E", 1, 13], ["W", -1, 13], ["W", 1, 25], ["N", 1, 25], ["N", -1, 13], ["S", 1, 13], ["S", -1, 25]]) {
+    add({ kind: "tree", ...onCurb(arm, side, t, ROAD + 0.75), r: 0.25 });
   }
   // 公園の木
-  for (const [x, z] of [[-26, 12], [-33, 16], [-29, 20], [-22, 22], [-34, 10], [-12, 28], [-17, 33]]) {
-    add({ kind: "tree", x, z, r: 0.55, park: true });
+  for (const [x, z] of [[-26, 12], [-33, 16], [-29, 20], [-22, 22], [-34, 10], [-23, 18.5], [-34.5, 21.8]]) {
+    add({ kind: "tree", x, z, r: 0.25, park: true });
   }
-  // 自動販売機（建物の前）
-  for (const [x, z, rot] of [[9.6, -9, 0], [-8.4, 9.6, 1], [26, 8.0, 2], [-21, -8.4, 2], [8.0, 26, 3]]) {
+  // 自動販売機（建物の前の私有地。背中を壁につける）
+  for (const [x, z, rot] of [[7.55, -27.2, 3], [-27.8, -7.55, 2], [25, 7.55, 0], [-7.55, 30.8, 1], [37.5, -7.55, 2]]) {
     add({ kind: "vending", x, z, w: 1.0, d: 0.8, rot });
   }
-  // 立て看板
-  for (const [x, z, text] of [[12.5, 7.6, "OPEN"], [-12.5, -7.6, "営業中"], [7.6, -24, "← 駅"], [-24, 7.6, "公園"]]) {
-    add({ kind: "signboard", x, z, w: 0.9, d: 0.5, text });
+  // 立て看板（お店の入口の横、壁ぎわ）
+  for (const [x, z, text] of [[7.3, -10.6, "OPEN"], [-12.3, -7.3, "営業中"], [7.3, -21.2, "← 駅"], [-21.2, 7.3, "公園"]]) {
+    add({ kind: "signboard", x, z, w: 0.9, d: 0.5, text, solid: false });
   }
-  // 電柱：歩道の建物側。電線でつなぐ
-  for (const t of [-31, -19, 19, 31]) {
-    for (const s of [-1, 1]) {
-      add({ kind: "pole", x: t, z: s * 7.4, r: 0.22, line: s > 0 ? "S" : "N" });
-      add({ kind: "pole", x: s * 7.4, z: t, r: 0.22, line: s > 0 ? "E" : "W" });
-    }
-  }
-  // 郵便ポスト
-  add({ kind: "mailbox", x: -7.6, z: -16, r: 0.3 });
-  add({ kind: "mailbox", x: 16.5, z: 7.7, r: 0.3 });
+  // 郵便ポスト（車道寄り）
+  add({ kind: "mailbox", x: -CURB, z: -24.5, r: 0.3, solid: false });
+  add({ kind: "mailbox", x: 13, z: -CURB, r: 0.3, solid: false });
   // ゴミ箱（自販機の横）
-  for (const [x, z] of [[10.8, -9.22], [11.4, -9.22], [-19.9, -8.4], [27.2, 8.22]]) add({ kind: "bin", x, z, r: 0.28 });
-  // 自転車置き場（3台ずつ。当たり判定はまとめて1つの箱）
-  add({ kind: "bikes", x: 8.1, z: 16.1, w: 1.7, d: 1.8, count: 3 });
-  add({ kind: "bikes", x: -8.1, z: 11.7, w: 1.7, d: 1.8, count: 3 });
-  // ガードレール（車道との境目。ところどころ切れていて、道路は渡れる）
-  for (const [x, z, len, along] of [[16, -4.35, 8, "x"], [-29.5, 4.35, 7, "x"], [4.35, 29.5, 7, "z"], [-4.35, -16, 8, "z"]]) {
-    add({ kind: "guardrail", x, z, w: along === "x" ? len : 0.14, d: along === "x" ? 0.14 : len, along });
+  for (const [x, z] of [[7.6, -26.3], [7.6, -25.7], [-26.9, -7.6], [24.1, 7.6]]) add({ kind: "bin", x, z, r: 0.28, solid: false });
+  // 自転車（お店の前に壁向きで3台ずつ。見た目だけ）
+  add({ kind: "bikes", x: -7.4, z: 13.2, w: 1.0, d: 1.8, count: 3, solid: false });
+  add({ kind: "bikes", x: 7.4, z: 24.6, w: 1.0, d: 1.8, count: 3, solid: false });
+  // ガードレール（車道との境目。電柱と街灯のあいだに短く）
+  for (const [arm, side] of [["E", -1], ["W", 1], ["S", 1], ["N", -1]]) {
+    const c = onCurb(arm, side, 31, ROAD + 0.35);
+    const along = arm === "E" || arm === "W" ? "x" : "z";
+    add({ kind: "guardrail", ...c, w: along === "x" ? 3.6 : 0.14, d: along === "x" ? 0.14 : 3.6, along });
   }
   // カーブミラー（交差点の角）
-  add({ kind: "mirror", x: 7.4, z: -7.4, r: 0.15 });
-  add({ kind: "mirror", x: -7.4, z: 7.4, r: 0.15 });
-  // 消火器ボックス
-  add({ kind: "hydrant", x: 22.5, z: -7.7, w: 0.5, d: 0.35 });
-  add({ kind: "hydrant", x: -7.7, z: 21, w: 0.35, d: 0.5 });
-  // 植木鉢（お店の前）
-  for (const [x, z] of [[8.65, -11.2], [8.65, -16.8], [-8.65, -15.6], [24.15, 27.5], [24.15, 32.5], [-8.65, 16.8]]) add({ kind: "planter", x, z, r: 0.35 });
+  add({ kind: "mirror", x: 7.3, z: -CURB, r: 0.07 });
+  add({ kind: "mirror", x: -7.3, z: CURB, r: 0.07 });
+  // 消火器ボックス（壁ぎわ。見た目だけ）
+  add({ kind: "hydrant", x: 22.5, z: -7.75, w: 0.5, d: 0.35, solid: false });
+  add({ kind: "hydrant", x: -7.75, z: 24.5, w: 0.35, d: 0.5, solid: false });
+  // 植木鉢（お店の前の壁ぎわ。見た目だけ）
+  for (const [x, z] of [[7.7, -9.0], [7.7, -15.8], [-9.0, -7.7], [16.6, 7.7], [7.7, 27.8], [-7.7, 26.0]]) add({ kind: "planter", x, z, r: 0.35, solid: false });
   // ベンチ（公園）
-  add({ kind: "bench", x: -26, z: 16.5, w: 1.6, d: 0.55 });
-  add({ kind: "bench", x: -22, z: 25.6, w: 1.6, d: 0.55 });
-  // 道路標識
-  for (const [x, z, sign] of [[4.6, -7.2, "crossing"], [-4.6, 7.2, "crossing"], [6.8, -8.6, "stop"], [-6.8, 8.6, "stop"], [4.6, 24, "speed"], [-4.6, -24, "speed"]]) {
-    add({ kind: "signpost", x, z, r: 0.1, sign });
+  add({ kind: "bench", x: -25, z: 17.9, w: 1.6, d: 0.55 });
+  add({ kind: "bench", x: -31.5, z: 22.8, w: 1.6, d: 0.55 });
+  // 道路標識（車道寄り）
+  for (const [x, z, sign] of [[CURB, -7.0, "crossing"], [-CURB, 7.0, "crossing"], [CURB, -8.6, "stop"], [-CURB, 8.6, "stop"], [CURB, 19, "speed"], [-CURB, -19, "speed"]]) {
+    add({ kind: "signpost", x, z, r: 0.07, sign });
   }
   // コインパーキングの柵・精算機・P看板
   add({ kind: "fence", x: (PARKING.minX + PARKING.maxX) / 2, z: PARKING.minZ + 0.1, w: PARKING.maxX - PARKING.minX, d: 0.14 });
   add({ kind: "fence", x: PARKING.minX + 0.1, z: (PARKING.minZ + PARKING.maxZ) / 2 - 0.4, w: 0.14, d: PARKING.maxZ - PARKING.minZ - 0.8 });
   add({ kind: "fence", x: PARKING.maxX - 0.1, z: (PARKING.minZ + PARKING.maxZ) / 2 - 0.4, w: 0.14, d: PARKING.maxZ - PARKING.minZ - 0.8 });
-  add({ kind: "meter", x: 25.4, z: -9.9, r: 0.22 });
-  add({ kind: "psign", x: 34.8, z: -9.7, r: 0.15 });
+  add({ kind: "meter", x: 25.4, z: -9.9, r: 0.22, solid: false });
+  add({ kind: "psign", x: 34.8, z: -9.7, r: 0.15, solid: false });
 
   // ---------- 当たり判定用の形 ----------
 
@@ -122,18 +158,20 @@ const TokyoWalkEngine = (() => {
     const d = turned ? p.w : p.d;
     return { minX: p.x - w / 2, maxX: p.x + w / 2, minZ: p.z - d / 2, maxZ: p.z + d / 2 };
   };
-  const BOX_HEIGHT = { vending: 1.8, signboard: 1.1, bikes: 1.0, guardrail: 0.8, hydrant: 0.9, bench: 0.8, fence: 1.2 };
+  const BOX_HEIGHT = { vending: 1.8, guardrail: 0.8, bench: 0.8, fence: 1.2 };
+  const solid = (p) => p.solid !== false;
 
-  // 箱（AABB）：建物・自販機・看板・自転車・ガードレールなど。h はカメラの壁よけ用の高さ
+  // 箱（AABB）：建物・自販機・ガードレール・柵・ベンチ。h はカメラの壁よけ用の高さ
+  const ALL_BUILDINGS = [...BUILDINGS, ...INFILL, ...BACKS];
   const BOXES = [
-    ...BUILDINGS.map((b) => ({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2, h: b.h, ref: b })),
-    ...PROPS.filter((p) => p.w !== undefined).map((p) => ({ ...boxOf(p), h: BOX_HEIGHT[p.kind] || 1, ref: p })),
+    ...ALL_BUILDINGS.map((b) => ({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2, h: b.h, ref: b })),
+    ...PROPS.filter((p) => p.w !== undefined && solid(p)).map((p) => ({ ...boxOf(p), h: BOX_HEIGHT[p.kind] || 1, ref: p })),
   ];
 
   // 1階のひさし（道路側に張り出す）：見た目とカメラの壁よけで共有する
   const AWNINGS = BUILDINGS.map((b) => {
-    const towardX = Math.abs(b.x) < Math.abs(b.z) ? 0 : -Math.sign(b.x);
-    const towardZ = towardX === 0 ? -Math.sign(b.z) : 0;
+    const towardX = b.face === "x" ? -Math.sign(b.x) : 0;
+    const towardZ = b.face === "z" ? -Math.sign(b.z) : 0;
     const w = towardX ? 0.9 : b.w * 0.7;
     const d = towardZ ? 0.9 : b.d * 0.7;
     const x = b.x + towardX * (b.w / 2 + 0.45);
@@ -141,16 +179,16 @@ const TokyoWalkEngine = (() => {
     return { x, z, w, d, y: 3.1, towardX, towardZ, ref: b };
   });
 
-  // 円：街灯・木・電柱・ポスト・ゴミ箱・ミラー・植木鉢・標識・精算機
-  const CIRCLES = PROPS.filter((p) => p.r !== undefined).map((p) => ({ x: p.x, z: p.z, r: p.r, ref: p }));
+  // 円：街灯・木・電柱・ミラー・標識（細い柱だけ。まわりを滑るように避けられる）
+  const CIRCLES = PROPS.filter((p) => p.r !== undefined && solid(p)).map((p) => ({ x: p.x, z: p.z, r: p.r, ref: p }));
 
   // ---------- プレイヤー ----------
 
   function create() {
     return {
-      x: 5.6, // 東側の歩道から北を向いてスタート
+      x: 6.6, // 南の通りの東側の歩道（歩く場所の真ん中）から、北の交差点を向いてスタート
       y: 0,
-      z: 14,
+      z: 19.5,
       vx: 0,
       vz: 0,
       vy: 0,
@@ -173,6 +211,9 @@ const TokyoWalkEngine = (() => {
     return false;
   }
 
+  // 箱の角にかすっただけなら、角の外側へ回り込ませる（角で引っかからない）
+  const CORNER = 0.55;
+
   // x方向・z方向に分けて動かし、ぶつかったら手前で止める（壁に沿って滑れる）
   function moveAxis(s, dx, dz) {
     const r = PLAYER.radius;
@@ -184,6 +225,17 @@ const TokyoWalkEngine = (() => {
         else if (dx < 0) nx = b.maxX + r;
         if (dz > 0) nz = b.minZ - r;
         else if (dz < 0) nz = b.maxZ + r;
+        // 進む向きと直角の方向の重なりが浅いときは、近いほうの角へ少しずらす
+        const push = Math.abs(dx || dz);
+        if (dx) {
+          const a = nz - (b.minZ - r);
+          const c = b.maxZ + r - nz;
+          if (Math.min(a, c) < CORNER) nz += a < c ? -Math.min(a, push) : Math.min(c, push);
+        } else {
+          const a = nx - (b.minX - r);
+          const c = b.maxX + r - nx;
+          if (Math.min(a, c) < CORNER) nx += a < c ? -Math.min(a, push) : Math.min(c, push);
+        }
       }
     }
     s.x = nx;
@@ -236,10 +288,11 @@ const TokyoWalkEngine = (() => {
       iz /= len;
     }
 
-    // 速度をなめらかに目標へ
+    // 速度をなめらかに目標へ（止まるときは少し早めに）
     const tx = ix * PLAYER.walkSpeed;
     const tz = iz * PLAYER.walkSpeed;
-    const a = Math.min(1, PLAYER.accel * dt);
+    const slowing = tx * tx + tz * tz < s.vx * s.vx + s.vz * s.vz;
+    const a = Math.min(1, (slowing ? PLAYER.decel : PLAYER.accel) * dt);
     s.vx += (tx - s.vx) * a;
     s.vz += (tz - s.vz) * a;
 
@@ -298,11 +351,11 @@ const TokyoWalkEngine = (() => {
 
   // ---------- カメラの壁よけ ----------
 
-  // カメラの視線をさえぎるもの（3Dの箱）：建物・ひさし・木の葉
+  // カメラの視線をさえぎるもの（3Dの箱）：建物・ひさし。
+  // 木の葉は入れない（歩道を歩くたびにカメラが寄ったり離れたりして、画面が落ち着かないため）
   const CAMERA_BLOCKERS = [
     ...BOXES.filter((b) => b.h >= 2).map((b) => ({ minX: b.minX - 0.25, maxX: b.maxX + 0.25, minY: 0, maxY: b.h + 0.3, minZ: b.minZ - 0.25, maxZ: b.maxZ + 0.25 })),
     ...AWNINGS.map((a) => ({ minX: a.x - a.w / 2 - 0.1, maxX: a.x + a.w / 2 + 0.1, minY: a.y - 0.2, maxY: a.y + 0.2, minZ: a.z - a.d / 2 - 0.1, maxZ: a.z + a.d / 2 + 0.1 })),
-    ...PROPS.filter((p) => p.kind === "tree").map((p) => ({ minX: p.x - 1.4, maxX: p.x + 1.4, minY: 1.0, maxY: 3.8, minZ: p.z - 1.4, maxZ: p.z + 1.4 })),
   ];
 
   // from → to の線分が最初にさえぎられる位置を 0〜1 で返す（何もなければ 1）
@@ -333,7 +386,7 @@ const TokyoWalkEngine = (() => {
     return best;
   }
 
-  return { FIELD, ROAD, SIDEWALK, PLAYER, BUILDINGS, PARKING, PROPS, AWNINGS, BOXES, CIRCLES, CAMERA_BLOCKERS, create, step, blocked, cameraClip };
+  return { FIELD, ROAD, SIDEWALK, FRONT, CURB, PLAYER, BUILDINGS, INFILL, BACKS, PARKING, PROPS, AWNINGS, BOXES, CIRCLES, CAMERA_BLOCKERS, create, step, blocked, cameraClip };
 })();
 
 if (typeof module !== "undefined") module.exports = TokyoWalkEngine;

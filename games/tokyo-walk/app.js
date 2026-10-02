@@ -23,11 +23,15 @@ let camPos = null;
 let last = performance.now();
 let mode = "loading";
 let titleAngle = 0.6;
-let awnings = []; // ひさし（真下に入ると、頭が見えるように薄くする）
+let awnings = null; // ひさし（真下に入ると、頭が見えるように薄くする）
 let worldStats = null;
-// 画面の解像度（スマホは 1.5 倍から始め、重ければ下げ、軽ければ上げる）
-const pixelRatio = { max: 1, current: 1, min: 1, frames: 0, time: 0 };
+// 画面の解像度（スマホは 1.5 倍から始め、重ければ下げる。一度重かった解像度には戻さない）
+const pixelRatio = { max: 1, current: 1, min: 1, frames: 0, time: 0, settle: 0, tooSlow: Infinity, changes: 0 };
 const SUN_OFFSET = { x: -26, y: 30, z: 18 }; // 夕方の低めの日ざし（南西から）
+// 影の地図は「止まっている物」だけ。プレイヤーが SHADOW_CELL m 動いたときにだけ描き直す
+const SHADOW_CELL = 6;
+let shadowCenter = null;
+let shadowUpdates = 0;
 
 function countObjects(root) {
   let n = 0;
@@ -55,7 +59,7 @@ window.__tokyoWalk = {
   stats() {
     if (!renderer) return null;
     const i = renderer.info;
-    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, sceneObjects: scene ? countObjects(scene) : 0, pixelRatio: pixelRatio.current, world: worldStats };
+    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, sceneObjects: scene ? countObjects(scene) : 0, pixelRatio: pixelRatio.current, pixelRatioChanges: pixelRatio.changes, softShadows: renderer.shadowMap.type !== THREE.BasicShadowMap, shadowUpdates, world: worldStats };
   },
 };
 
@@ -202,46 +206,74 @@ function animatePlayer(dt) {
   const bob = air ? 0 : Math.abs(Math.sin(p.phase)) * 0.05 * state.moving;
   p.body.position.y = 0.95 + bob;
   p.head.position.y = 1.62 + bob;
+  // 足もとの丸い影：跳ぶと小さく薄く
+  const k = 1 / (1 + state.y * 0.6);
+  p.shadow.position.set(state.x, 0.08, state.z);
+  p.shadow.scale.set(1.1 * k, 1, 1.1 * k);
+  p.shadow.material.opacity = 0.38 * k;
 }
 
 // =========================================================
 // カメラ
 // =========================================================
 
-// 第2版：少し近く・低めにして、キャラクターと街並みの両方が見えるように
+// キャラクターと街並みの両方が見える距離・高さ
 const CAM_DIST = 6.4;
-const CAM_HEIGHT = 3.5;
+const CAM_HEIGHT = 3.4;
 const LOOK_HEIGHT = 1.55;
+let camZoom = 1; // 壁よけで手前に寄せている割合（1 = 寄せていない）
+const _want = { x: 0, y: 0, z: 0 };
 
 function updateCamera(dt, instant) {
   const headY = state.y + LOOK_HEIGHT;
-  const want = new THREE.Vector3(state.x + Math.sin(camYaw) * CAM_DIST, state.y + CAM_HEIGHT, state.z + Math.cos(camYaw) * CAM_DIST);
-  // 建物にめり込まないよう、頭からカメラまでの間に建物があれば手前に寄せる
-  const t = E.cameraClip(state.x, headY, state.z, want.x, want.y, want.z);
-  if (t < 1) {
-    const k = Math.max(0.12, t - 0.06);
-    want.set(state.x + (want.x - state.x) * k, headY + (want.y - headY) * k, state.z + (want.z - state.z) * k);
+  const wx = state.x + Math.sin(camYaw) * CAM_DIST;
+  const wy = state.y + CAM_HEIGHT;
+  const wz = state.z + Math.cos(camYaw) * CAM_DIST;
+  // 建物にめり込まないよう、頭からカメラまでの間に建物があれば手前に寄せる。
+  // 寄せるときはすぐ、離すときはゆっくり（寄ったり離れたりで画面が揺れないように）
+  const t = E.cameraClip(state.x, headY, state.z, wx, wy, wz);
+  const k = t < 1 ? Math.max(0.12, t - 0.06) : 1;
+  if (instant || k < camZoom) camZoom = k;
+  else camZoom += (k - camZoom) * Math.min(1, dt * 2.5);
+  // 大きく寄せたときは少し上から見下ろし、少し先を見る（頭で画面がふさがらないように）
+  const lift = Math.max(0, 0.45 - camZoom) * 1.6;
+  _want.x = state.x + (wx - state.x) * camZoom;
+  _want.y = headY + (wy - headY) * camZoom + lift;
+  _want.z = state.z + (wz - state.z) * camZoom;
+  if (lift > 0) {
+    // 持ち上げた先が、ひさしなどにぶつからないか確かめる
+    const t2 = E.cameraClip(state.x, headY, state.z, _want.x, _want.y, _want.z);
+    if (t2 < 1) {
+      const k2 = Math.max(0.12, t2 - 0.06);
+      _want.x = state.x + (_want.x - state.x) * k2;
+      _want.y = headY + (_want.y - headY) * k2;
+      _want.z = state.z + (_want.z - state.z) * k2;
+    }
   }
-  if (!camPos || instant) camPos = want.clone();
-  else camPos.lerp(want, Math.min(1, dt * 8));
+  if (!camPos || instant) camPos = new THREE.Vector3(_want.x, _want.y, _want.z);
+  else {
+    const a = Math.min(1, dt * 10);
+    camPos.x += (_want.x - camPos.x) * a;
+    camPos.y += (_want.y - camPos.y) * a;
+    camPos.z += (_want.z - camPos.z) * a;
+  }
   camera.position.copy(camPos);
-  camera.lookAt(state.x, headY, state.z);
-
-  // 影の範囲をプレイヤーのまわりに
-  sun.position.set(state.x + SUN_OFFSET.x, SUN_OFFSET.y, state.z + SUN_OFFSET.z);
-  sun.target.position.set(state.x, 0, state.z);
+  const ahead = (1 - camZoom) * 2.5;
+  camera.lookAt(state.x - Math.sin(camYaw) * ahead, headY - (1 - camZoom) * 0.3, state.z - Math.cos(camYaw) * ahead);
+  updateSun(state.x, state.z);
 }
 
-// プレイヤーがひさしの下（またはすぐそば）にいるときは、ひさしを薄くする
-function fadeAwnings(dt) {
-  for (const a of awnings) {
-    const d = a.data;
-    const near = Math.abs(state.x - d.x) < d.w / 2 + 1.2 && Math.abs(state.z - d.z) < d.d / 2 + 1.2;
-    const target = near ? 0.22 : 1;
-    const m = a.mesh.material;
-    m.opacity += (target - m.opacity) * Math.min(1, dt * 8);
-    m.depthWrite = m.opacity > 0.95;
-  }
+// 影の範囲をプレイヤーのまわりに。動いていない間は描き直さない
+function updateSun(x, z) {
+  const cx = Math.round(x / SHADOW_CELL) * SHADOW_CELL;
+  const cz = Math.round(z / SHADOW_CELL) * SHADOW_CELL;
+  if (shadowCenter && shadowCenter.x === cx && shadowCenter.z === cz) return;
+  shadowCenter = { x: cx, z: cz };
+  sun.position.set(cx + SUN_OFFSET.x, SUN_OFFSET.y, cz + SUN_OFFSET.z);
+  sun.target.position.set(cx, 0, cz);
+  sun.target.updateMatrixWorld();
+  renderer.shadowMap.needsUpdate = true;
+  shadowUpdates++;
 }
 
 // =========================================================
@@ -265,7 +297,8 @@ function readInput() {
 }
 
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const rawDt = Math.min(0.5, (now - last) / 1000);
+  const dt = Math.min(0.05, rawDt);
   last = now;
 
   if (mode === "play") {
@@ -276,36 +309,58 @@ function frame(now) {
     input.jumpQueued = false;
     animatePlayer(dt);
     updateCamera(dt);
-    fadeAwnings(dt);
+    awnings.update(state.x, state.z, dt);
   } else {
     // タイトル画面では、空から街全体をゆっくり見回す
     titleAngle += dt * 0.1;
     animatePlayer(dt);
     camera.position.set(Math.sin(titleAngle) * 40, 27, Math.cos(titleAngle) * 40);
     camera.lookAt(0, 0, 0);
-    sun.position.set(SUN_OFFSET.x, SUN_OFFSET.y, SUN_OFFSET.z);
-    sun.target.position.set(0, 0, 0);
+    updateSun(0, 0);
   }
 
   renderer.render(scene, camera);
-  adaptResolution(dt);
+  adaptResolution(rawDt);
   requestAnimationFrame(frame);
 }
 
-// スマホ向け：2秒ごとに平均fpsを見て、解像度を少しずつ調整する
-function adaptResolution(dt) {
+// スマホ向け：2秒ごとに平均fpsを見て、解像度を少しずつ調整する。
+// 上げ下げをくり返すと、そのたびに画面の作り直しで一瞬止まるので、
+// 「一度重かった解像度」には戻さない。変えた直後の2秒は測らない
+function adaptResolution(rawDt) {
   if (!isTouch) return;
+  if (pixelRatio.settle > 0) {
+    pixelRatio.settle -= rawDt;
+    return;
+  }
   pixelRatio.frames++;
-  pixelRatio.time += dt;
+  pixelRatio.time += rawDt;
   if (pixelRatio.time < 2) return;
   const fps = pixelRatio.frames / pixelRatio.time;
   pixelRatio.frames = 0;
   pixelRatio.time = 0;
   let next = pixelRatio.current;
-  if (fps < 40) next = Math.max(pixelRatio.min, pixelRatio.current - 0.25);
-  else if (fps > 57) next = Math.min(pixelRatio.max, pixelRatio.current + 0.25);
+  if (fps < 45 && pixelRatio.current <= pixelRatio.min && renderer.shadowMap.type !== THREE.BasicShadowMap) {
+    // 解像度を下げきっても重いときは、影のふちのぼかしをやめる（1回だけ。シェーダーの作り直しで一瞬止まる）
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+    scene.traverse((o) => {
+      if (o.material) o.material.needsUpdate = true;
+    });
+    renderer.shadowMap.needsUpdate = true;
+    pixelRatio.settle = 2;
+    pixelRatio.changes++;
+    return;
+  }
+  if (fps < 45) {
+    pixelRatio.tooSlow = Math.min(pixelRatio.tooSlow, pixelRatio.current);
+    next = Math.max(pixelRatio.min, pixelRatio.current - 0.25);
+  } else if (fps > 58 && pixelRatio.current + 0.25 < pixelRatio.tooSlow) {
+    next = Math.min(pixelRatio.max, pixelRatio.current + 0.25);
+  }
   if (next !== pixelRatio.current) {
     pixelRatio.current = next;
+    pixelRatio.changes++;
+    pixelRatio.settle = 2;
     renderer.setPixelRatio(next);
     resize();
   }
@@ -355,26 +410,30 @@ async function boot() {
   renderer.setPixelRatio(pixelRatio.current);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // 影は止まっている物だけなので、毎フレームは描き直さない（updateSun が必要なときだけ頼む）
+  renderer.shadowMap.autoUpdate = false;
   // 夕方のやわらかい色味（後処理は使わず、トーンマッピングだけ）
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color("#f2d3ba");
+  scene.background = new THREE.Color("#efd2bb");
   // 遠くの街が、夕方のもやの中にとけていく
-  scene.fog = new THREE.Fog("#efcfb6", 55, 215);
+  scene.fog = new THREE.Fog("#eccfb8", 50, 230);
 
   camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
 
-  // 空から：青み、地面から：暖かい照り返し
-  scene.add(new THREE.HemisphereLight("#d9e8ff", "#c0a183", 1.45));
+  // 空から：青み、地面から：暖かい照り返し（少し控えめにして、日なたと日かげの差を出す）
+  scene.add(new THREE.HemisphereLight("#dfe8f4", "#b3a08c", 1.25));
   // 太陽：低めの角度から暖色の光（影は1枚だけ、プレイヤーの周りに）
-  sun = new THREE.DirectionalLight("#ffd9ae", 2.5);
+  sun = new THREE.DirectionalLight("#ffe0bd", 2.7);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+  // 影の地図：スマホ 896px・PC 1536px（範囲 ±24m。1ピクセルあたり約5cm/3cm）
+  const shadowSize = isTouch ? 896 : 1536;
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   const sc = sun.shadow.camera;
-  sc.left = sc.bottom = -26;
-  sc.right = sc.top = 26;
+  sc.left = sc.bottom = -24;
+  sc.right = sc.top = 24;
   sc.near = 1;
   sc.far = 90;
   sun.shadow.bias = -0.0006;
@@ -384,9 +443,13 @@ async function boot() {
   const world = buildWorld(THREE, E, scene, { isTouch, maxAniso: renderer.capabilities.getMaxAnisotropy() });
   awnings = world.awnings;
   worldStats = world.stats;
-  player = buildPlayer(THREE, scene);
+  player = buildPlayer(THREE, scene, { shadowTexture: world.glowTexture });
 
   resize();
+  // 使うシェーダーを最初にまとめて用意する（ひさしの半透明などが初めて出たときに一瞬止まらないように）
+  awnings.setPreview(true);
+  renderer.compile(scene, camera);
+  awnings.setPreview(false);
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 200));
 

@@ -25,7 +25,7 @@ check(!E.blocked(s0.x, s0.z), "スタート地点がふさがっている");
 
 // 2. どの建物にも、4方向から歩いてぶつかってみる → すり抜けない・手前で止まる
 let wallHits = 0;
-for (const b of E.BUILDINGS) {
+for (const b of [...E.BUILDINGS, ...E.INFILL, ...E.BACKS]) {
   const cx = b.x, cz = b.z;
   const tries = [
     { x: b.x - b.w / 2 - 1.5, z: cz, ix: 1, iz: 0, stop: (s) => s.x <= b.x - b.w / 2 - E.PLAYER.radius + 1e-6 },
@@ -146,8 +146,43 @@ var reachTargets = 0;
   for (const [x, z] of [[0, 5.4], [0, -5.4], [5.4, 0], [-5.4, 0]]) reach(x, z, "横断歩道");
 }
 
+// 10. 歩きやすさ：歩道の「歩く場所」（車道の端から 1.2〜3.0m）を、まっすぐ端から端まで一度も減速せずに歩ける
+//     （電柱・街灯・街路樹は車道寄り、小物は壁ぎわに置いてあるので、よけながら進まなくてよい）
+var laneCount = 0;
+for (const arm of ["E", "W", "S", "N"]) for (const side of [-1, 1]) for (let off = 1.2; off <= 3.01; off += 0.3) for (const dir of [1, -1]) {
+  const pos = (t) => (arm === "E" ? [t, side * (E.ROAD + off)] : arm === "W" ? [-t, side * (E.ROAD + off)] : arm === "S" ? [side * (E.ROAD + off), t] : [side * (E.ROAD + off), -t]);
+  const [x0, z0] = pos(dir > 0 ? 8 : 38);
+  const [x1, z1] = pos(dir > 0 ? 38 : 8);
+  const s = Object.assign(E.create(), { x: x0, z: z0 });
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const ix = (x1 - x0) / len, iz = (z1 - z0) / len;
+  let slow = 0, ok = false;
+  for (let f = 0; f < 60 * 15 && !ok; f++) {
+    E.step(s, DT, ix, iz, false);
+    if (f > 30 && Math.hypot(s.vx, s.vz) < E.PLAYER.walkSpeed * 0.85) slow++;
+    ok = (s.x - x1) * ix + (s.z - z1) * iz >= 0;
+  }
+  laneCount++;
+  if (!ok || slow) check(false, `歩道(${arm}${side > 0 ? "+" : "-"}, 車道から${off.toFixed(1)}m)をまっすぐ歩くと引っかかる（減速 ${slow} フレーム）`);
+}
+
+// 11. 歩道を歩いている間、カメラが壁よけで寄ったり離れたりしない（カメラの位置は app.js と同じ：後ろ 6.4m・高さ 3.4m）
+{
+  let clipped = 0, samples = 0;
+  for (const arm of ["E", "W", "S", "N"]) for (const side of [-1, 1]) for (let t = 10; t <= 38; t += 0.5) {
+    const off = E.ROAD + 2.2;
+    const [x, z] = arm === "E" ? [t, side * off] : arm === "W" ? [-t, side * off] : arm === "S" ? [side * off, t] : [side * off, -t];
+    // 進む向きの真後ろにカメラ
+    const back = arm === "E" ? [-1, 0] : arm === "W" ? [1, 0] : arm === "S" ? [0, -1] : [0, 1];
+    samples++;
+    if (E.cameraClip(x, 1.55, z, x + back[0] * 6.4, 3.4, z + back[1] * 6.4) < 1) clipped++;
+  }
+  check(clipped === 0, `歩道を歩くとカメラが寄ってしまう（${samples}か所中 ${clipped}か所）`);
+  var camSamples = samples;
+}
+
 if (failed) {
   console.error(`\n${failed} 件の NG`);
   process.exit(1);
 }
-console.log(`OK: 建物${E.BUILDINGS.length}棟に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける`);
+console.log(`OK: 建物${E.BUILDINGS.length + E.INFILL.length + E.BACKS.length}棟（お店${E.BUILDINGS.length}軒）に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける / 歩道の${laneCount}レーンを減速せずに歩ける / 歩道${camSamples}か所でカメラが寄らない`);
