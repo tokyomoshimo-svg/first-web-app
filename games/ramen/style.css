@@ -1,0 +1,797 @@
+/* ラーメンを伸ばすな — 深夜のラーメン屋にある、ちょっと怪しいゲーム機 */
+
+:root {
+  --night: #140b08;
+  --wood-1: #8a5a2e;
+  --wood-2: #5e3a1c;
+  --red: #d8361f;
+  --red-dark: #8f1d16;
+  --orange: #ff8a3a;
+  --cream: #fff3d6;
+  --noren: #1d2340;
+  --noodle: #f6dc8a;
+}
+
+html {
+  background: var(--night);
+}
+
+body {
+  background:
+    radial-gradient(60% 40% at 50% 0%, rgba(255, 106, 58, 0.18), transparent 70%) no-repeat,
+    var(--night);
+  color: var(--cream);
+}
+
+.ramen-app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(8px, env(safe-area-inset-top)) 10px max(20px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.ramen-app .site-nav {
+  margin-bottom: 6px;
+}
+
+.ramen-app .site-nav a {
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: transparent;
+  border-color: rgba(255, 243, 214, 0.15);
+  color: #b08b70;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   お店（ゲーム機）
+   ========================================================= */
+
+.shop {
+  position: relative;
+  border-radius: 14px;
+  padding: 0 10px 12px;
+  /* 木目 */
+  background:
+    repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.08) 0 2px, transparent 2px 9px, rgba(255, 255, 255, 0.03) 9px 11px, transparent 11px 23px),
+    linear-gradient(var(--wood-1), var(--wood-2));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 180, 0.25),
+    0 20px 46px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(255, 106, 58, 0.12);
+}
+
+/* ---- 暖簾 ---- */
+
+.noren {
+  display: flex;
+  gap: 3px;
+  margin: 0 -10px 10px;
+  padding: 6px 10px 0;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(#3b2414, #2a180c);
+  border-bottom: 3px solid #2a180c;
+}
+
+.noren-cloth {
+  flex: 1;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(var(--noren), #151a33);
+  color: var(--cream);
+  font-size: 1.35rem;
+  font-weight: 800;
+  border-radius: 0 0 4px 4px;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  transform-origin: 50% 0;
+  animation: sway 4s ease-in-out infinite;
+}
+
+.noren-cloth:nth-child(3) { animation-delay: -1s; }
+.noren-cloth:nth-child(4) { animation-delay: -2s; }
+.noren-cloth:nth-child(5) { animation-delay: -3s; }
+
+@keyframes sway {
+  0%, 100% { transform: skewX(0deg); }
+  50% { transform: skewX(-3deg); }
+}
+
+/* ---- 画面 ---- */
+
+.frame {
+  padding: 6px;
+  border-radius: 10px;
+  background: #1a0e08;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 220, 180, 0.15);
+}
+
+.screen {
+  position: relative;
+  width: 100%;
+  max-width: max(250px, calc((100dvh - 300px) / 1.0667));
+  margin: 0 auto;
+  aspect-ratio: 300 / 320;
+  border-radius: 6px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #2a130d;
+  cursor: pointer;
+}
+
+.screen.shake {
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-6px, 2px); }
+  40% { transform: translate(5px, -2px); }
+  60% { transform: translate(-4px, 1px); }
+  80% { transform: translate(2px, 0); }
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.lantern {
+  transform-origin: 54px 38px;
+  animation: lantern 5s ease-in-out infinite;
+}
+
+@keyframes lantern {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+.lantern-glow {
+  animation: glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  to { opacity: 0.7; }
+}
+
+/* ---- 麺 ---- */
+
+.bowl-noodles path,
+.overflow path,
+.lifted path {
+  fill: none;
+  stroke: var(--noodle);
+  stroke-linecap: round;
+}
+
+/* 伸びるほど、麺が太く白っぽくなる */
+.bowl-noodles path,
+.overflow path {
+  stroke-width: var(--noodle-w, 3px);
+  stroke: var(--noodle-c, var(--noodle));
+}
+
+/* どんぶりの中の麺は、ほんの少し影をつけて立体的に */
+.bowl-noodles path {
+  stroke-width: calc(var(--noodle-w, 3px) * 0.9);
+}
+
+/* ---- 湯気 ---- */
+
+.steam path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 5;
+  stroke-linecap: round;
+  animation: steam 2.6s ease-in-out infinite;
+  opacity: 0;
+}
+
+.steam path:nth-child(2) { animation-delay: -0.9s; }
+.steam path:nth-child(3) { animation-delay: -1.7s; }
+
+@keyframes steam {
+  0% { transform: translateY(10px); opacity: 0; }
+  30% { opacity: 0.6; }
+  100% { transform: translateY(-26px); opacity: 0; }
+}
+
+/* 食べた瞬間、湯気がふわっと */
+.screen.puff .steam path {
+  animation-duration: 0.9s;
+}
+
+/* ---- 箸 ---- */
+
+.chopsticks {
+  transform-origin: 250px 20px;
+  transition: transform 0.12s ease-out;
+}
+
+.lifted {
+  opacity: 0;
+}
+
+.lifted path {
+  stroke-width: 3.5;
+}
+
+.screen.slurp .chopsticks {
+  animation: lift 0.28s ease-out;
+}
+
+.screen.slurp .lifted {
+  animation: slurp 0.28s ease-out;
+}
+
+@keyframes lift {
+  0% { transform: translate(0, 0) rotate(0); }
+  40% { transform: translate(4px, -26px) rotate(-4deg); }
+  100% { transform: translate(0, 0) rotate(0); }
+}
+
+@keyframes slurp {
+  0% { opacity: 1; transform: translateY(0) scaleY(1); }
+  60% { opacity: 1; transform: translateY(-50px) scaleY(0.6); }
+  100% { opacity: 0; transform: translateY(-90px) scaleY(0.2); }
+}
+
+/* =========================================================
+   HUD・メッセージ
+   ========================================================= */
+
+.hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(rgba(20, 8, 4, 0.75), rgba(20, 8, 4, 0));
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+[data-state="start"] .hud {
+  opacity: 0;
+}
+
+.hud p {
+  margin: 0;
+}
+
+.gauge {
+  flex: 1;
+  min-width: 0;
+}
+
+.gauge-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--cream);
+  text-shadow: 0 1px 2px #000;
+}
+
+.gauge-num {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--g-color, #7bd36b);
+}
+
+.gauge-bar {
+  height: 12px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 243, 214, 0.25);
+  overflow: hidden;
+}
+
+.gauge-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--g-color, #7bd36b);
+  box-shadow: 0 0 10px var(--g-color, #7bd36b);
+}
+
+.app-danger .gauge-fill {
+  animation: danger 0.4s steps(2) infinite;
+}
+
+@keyframes danger {
+  50% { opacity: 0.55; }
+}
+
+.score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  min-width: 64px;
+}
+
+.score-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: #ffcf9a;
+}
+
+#score {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 今の状態（吹き出し） */
+.mood {
+  position: absolute;
+  left: 50%;
+  top: 19%;
+  z-index: 9;
+  margin: 0;
+  padding: 4px 14px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--cream);
+  color: #3b1d10;
+  font-size: clamp(0.95rem, 4.8vw, 1.15rem);
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.mood:empty,
+[data-state="start"] .mood,
+[data-state="result"] .mood {
+  display: none;
+}
+
+.mood.change {
+  animation: mood 0.3s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+@keyframes mood {
+  from { transform: translateX(-50%) scale(0.6); }
+  to { transform: translateX(-50%) scale(1); }
+}
+
+.mood.lv3 { background: #ffd34d; }
+.mood.lv4 { background: #ff8a3a; color: #fff; }
+.mood.lv5 { background: var(--red); color: #fff; animation: wobble 0.3s ease-in-out infinite alternate; }
+
+@keyframes wobble {
+  from { transform: translateX(-50%) rotate(-3deg); }
+  to { transform: translateX(-50%) rotate(3deg); }
+}
+
+/* ズズッ！などの文字 */
+.pops {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+}
+
+.pop {
+  position: absolute;
+  margin: 0;
+  font-size: clamp(1.2rem, 6.5vw, 1.6rem);
+  font-weight: 900;
+  font-style: italic;
+  color: #fff;
+  -webkit-text-stroke: 1px #3b1d10;
+  text-shadow: 0 3px 0 #3b1d10;
+  white-space: nowrap;
+  animation: pop 0.6s ease-out forwards;
+}
+
+.pop.choke {
+  font-size: clamp(1.8rem, 10vw, 2.4rem);
+  color: #ffe08a;
+}
+
+.pop.bonus {
+  font-size: clamp(1.4rem, 8vw, 1.9rem);
+  color: #ffd34d;
+  animation-duration: 1s;
+}
+
+@keyframes pop {
+  0% { transform: translate(0, 6px) scale(0.6) rotate(var(--r, -8deg)); opacity: 0; }
+  20% { transform: translate(0, 0) scale(1.1) rotate(var(--r, -8deg)); opacity: 1; }
+  100% { transform: translate(0, -28px) scale(1) rotate(var(--r, -8deg)); opacity: 0; }
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(4rem, 26vw, 7rem);
+  font-weight: 900;
+  color: var(--cream);
+  -webkit-text-stroke: 2px #3b1d10;
+  text-shadow: 0 5px 0 #3b1d10;
+  pointer-events: none;
+}
+
+.countdown.is-go {
+  font-size: clamp(2rem, 11vw, 2.8rem);
+  color: #ffd34d;
+}
+
+.countdown.pop-in {
+  animation: count 0.7s ease-out forwards;
+}
+
+@keyframes count {
+  0% { transform: scale(2); opacity: 0; }
+  25% { transform: scale(1); opacity: 1; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.85); opacity: 0; }
+}
+
+/* =========================================================
+   画面内オーバーレイ
+   ========================================================= */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.overlay p {
+  margin: 0;
+}
+
+[data-state="start"] .overlay-start,
+[data-state="result"] .overlay-result {
+  display: flex;
+  animation: ov-in 0.35s ease;
+}
+
+@keyframes ov-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.overlay-start {
+  background: linear-gradient(rgba(20, 8, 4, 0.78), rgba(20, 8, 4, 0.9));
+}
+
+.ov-kicker {
+  padding: 1px 10px;
+  border: 1px solid #ff8a3a;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #ff8a3a;
+  box-shadow: 0 0 10px rgba(255, 138, 58, 0.4), inset 0 0 6px rgba(255, 138, 58, 0.3);
+  animation: open-sign 2.4s steps(2) infinite;
+}
+
+@keyframes open-sign {
+  50% { opacity: 0.75; }
+}
+
+.ov-title {
+  margin-top: 8px !important;
+  font-size: clamp(2rem, 10.5vw, 2.6rem);
+  font-weight: 900;
+  line-height: 1.15;
+  color: var(--cream);
+  text-shadow: 0 3px 0 var(--red-dark), 0 0 18px rgba(255, 106, 58, 0.45);
+}
+
+.ov-lead {
+  margin-top: 10px !important;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffd34d;
+}
+
+.ov-hint {
+  margin-top: 10px !important;
+  padding: 4px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.5);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #f0dcc0;
+}
+
+.ov-hint b {
+  color: #ffd34d;
+}
+
+/* ---- 結果 ---- */
+
+.overlay-result {
+  background: rgba(20, 8, 4, 0.82);
+}
+
+.result > * {
+  opacity: 0;
+  animation: res-in 0.35s ease forwards;
+}
+
+.r-title { animation: title-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+.r-score { animation-delay: 0.25s; }
+.r-eaten { animation-delay: 0.45s; }
+.r-extra { animation-delay: 0.55s; }
+.r-quip { animation-delay: 0.7s; }
+
+@keyframes res-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes title-in {
+  0% { opacity: 0; transform: scale(1.6) rotate(-6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-2deg); }
+}
+
+.r-title {
+  font-size: clamp(1.8rem, 9vw, 2.3rem);
+  font-weight: 900;
+  color: var(--cream);
+  text-shadow: 0 3px 0 var(--red-dark);
+}
+
+.r-score {
+  margin-top: 10px !important;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  line-height: 1.1;
+}
+
+#result-score {
+  display: inline-block;
+  font-size: clamp(2.4rem, 13vw, 3.2rem);
+  font-weight: 900;
+  color: #ffd34d;
+  text-shadow: 0 3px 0 #7a3a10, 0 0 18px rgba(255, 211, 77, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+#result-score.bump {
+  animation: bump 0.35s ease;
+}
+
+@keyframes bump {
+  50% { transform: scale(1.18); }
+}
+
+.r-score small {
+  margin-left: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #ffcf9a;
+}
+
+.r-eaten {
+  margin-top: 6px !important;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.r-eaten b {
+  margin: 0 2px;
+  font-size: 1.3rem;
+  color: #fff;
+}
+
+.r-extra {
+  margin-top: 2px !important;
+  font-size: 0.75rem;
+  color: #d8b896;
+  min-height: 1em;
+}
+
+.r-quip {
+  margin-top: 10px !important;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--cream);
+  color: #3b1d10;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+@media (max-height: 640px) {
+  .ov-lead { margin-top: 6px !important; }
+  .r-quip { margin-top: 6px !important; font-size: 0.8rem; }
+}
+
+/* =========================================================
+   操作（カウンターの手元）
+   ========================================================= */
+
+.counter-deck {
+  margin-top: 10px;
+}
+
+.ramen-btn {
+  display: none;
+  position: relative;
+  width: 100%;
+  height: 88px;
+  border: none;
+  border-radius: 20px;
+  overflow: hidden;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.2s ease, opacity 0.2s ease;
+}
+
+[data-state="start"] .btn-start,
+[data-state="countdown"] .btn-eat,
+[data-state="paused"] .btn-eat,
+[data-state="play"] .btn-eat,
+[data-state="over"] .btn-eat,
+[data-state="result"] .btn-retry {
+  display: block;
+}
+
+.btn-start,
+.btn-retry,
+.btn-eat {
+  color: #fff;
+  background: linear-gradient(#ff5a3a, var(--red) 55%, #b8261b);
+  box-shadow: 0 7px 0 #6e1410, 0 12px 26px rgba(216, 54, 31, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.btn-retry {
+  animation: retry-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes retry-glow {
+  50% { filter: brightness(1.1); box-shadow: 0 7px 0 #6e1410, 0 12px 36px rgba(255, 106, 58, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.3); }
+}
+
+.ramen-btn:active:not(:disabled),
+.btn-eat.is-pressed {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 #6e1410, 0 5px 12px rgba(216, 54, 31, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.ramen-btn:focus-visible {
+  outline: 3px solid #ffd34d;
+  outline-offset: 3px;
+}
+
+.ramen-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 口の中の量（ボタンの中がたまっていく） */
+.mouth-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  transform-origin: 0 50%;
+  transform: scaleX(var(--mouth, 0));
+  background: linear-gradient(90deg, rgba(255, 211, 77, 0.35), rgba(255, 211, 77, 0.55));
+  pointer-events: none;
+}
+
+.btn-eat.full .mouth-fill {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.6));
+}
+
+.eat-label {
+  position: relative;
+}
+
+/* むせている間 */
+.btn-eat.choking {
+  filter: grayscale(0.7) brightness(0.75);
+}
+
+[data-state="countdown"] .btn-eat,
+[data-state="paused"] .btn-eat,
+[data-state="over"] .btn-eat {
+  filter: grayscale(0.6) brightness(0.7);
+}
+
+/* =========================================================
+   結果のサブボタン
+   ========================================================= */
+
+.sub-actions {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+[data-state="result"] .sub-actions {
+  display: grid;
+  animation: ov-in 0.4s ease 0.3s both;
+}
+
+.sub-actions [hidden] {
+  display: none;
+}
+
+.sub-actions > :last-child,
+.sub-actions:has(#btn-share-native[hidden]) .btn-x {
+  grid-column: 1 / -1;
+}
+
+.sub-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 243, 214, 0.06);
+  border: 1px solid rgba(255, 243, 214, 0.18);
+  color: #f0dcc0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sub-btn:active {
+  transform: scale(0.97);
+}
+
+.sub-btn.btn-x {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+@media (min-width: 720px) {
+  .ramen-app {
+    padding-top: 20px;
+  }
+}

@@ -38,4 +38,13 @@ const GAMES = [
     color: "#ff3ea5",
     href: "games/tokyo-run/",
   },
+  {
+    id: "ramen",
+    title: "ラーメンを伸ばすな",
+    emoji: "🍜",
+    description: "麺がどんどん伸びていく。伸び切る前に、ひたすら食べろ。ただそれだけ。",
+    time: "約20秒",
+    color: "#d8361f",
+    href: "games/ramen/",
+  },
 ];

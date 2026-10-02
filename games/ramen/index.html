@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#140b08">
+  <meta name="description" content="ラーメンの麺がどんどん伸びる。伸び切る前に、ひたすら食べる。ただそれだけのミニゲーム。">
+  <title>ラーメンを伸ばすな｜ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍜</text></svg>">
+  <link rel="stylesheet" href="../../assets/common.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="ramen-app" id="app" data-state="start">
+    <nav class="site-nav" aria-label="サイト">
+      <a href="../../">← ちょっと暇つぶし。</a>
+    </nav>
+
+    <div class="shop">
+      <!-- 暖簾 -->
+      <header class="noren">
+        <h1 class="sr-only" id="game-title">ラーメンを伸ばすな</h1>
+        <span class="noren-cloth" aria-hidden="true">ら</span>
+        <span class="noren-cloth" aria-hidden="true">ー</span>
+        <span class="noren-cloth" aria-hidden="true">め</span>
+        <span class="noren-cloth" aria-hidden="true">ん</span>
+      </header>
+
+      <!-- 木枠のゲーム画面 -->
+      <div class="frame">
+        <div class="screen" id="screen">
+          <svg class="scene" id="scene" viewBox="0 0 300 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#2a130d"/>
+                <stop offset="1" stop-color="#4a2216"/>
+              </linearGradient>
+              <radialGradient id="lantern-glow">
+                <stop offset="0" stop-color="#ff6a3a" stop-opacity="0.55"/>
+                <stop offset="1" stop-color="#ff6a3a" stop-opacity="0"/>
+              </radialGradient>
+              <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#b9824a"/>
+                <stop offset="1" stop-color="#8a5a2e"/>
+              </linearGradient>
+              <linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#d23a2a"/>
+                <stop offset="1" stop-color="#8f1d16"/>
+              </linearGradient>
+              <radialGradient id="soup" cx="0.5" cy="0.4">
+                <stop offset="0" stop-color="#f2c27a"/>
+                <stop offset="1" stop-color="#cf8a42"/>
+              </radialGradient>
+              <clipPath id="bowl-top"><ellipse cx="150" cy="176" rx="92" ry="22"/></clipPath>
+            </defs>
+
+            <!-- 壁・お品書き・提灯 -->
+            <rect width="300" height="240" fill="url(#wall)"/>
+            <g class="menu-tags">
+              <rect x="150" y="40" width="22" height="62" fill="#f4ecd6"/><text x="161" y="56" font-size="10" text-anchor="middle" writing-mode="tb" fill="#2a1a10">らーめん</text>
+              <rect x="180" y="40" width="22" height="62" fill="#f4ecd6"/><text x="191" y="56" font-size="10" text-anchor="middle" writing-mode="tb" fill="#b8261b">替え玉</text>
+              <rect x="210" y="40" width="22" height="62" fill="#f4ecd6"/><text x="221" y="56" font-size="10" text-anchor="middle" writing-mode="tb" fill="#2a1a10">ぎょうざ</text>
+              <rect x="240" y="40" width="22" height="62" fill="#f4ecd6"/><text x="251" y="56" font-size="10" text-anchor="middle" writing-mode="tb" fill="#2a1a10">ビール</text>
+            </g>
+            <circle cx="54" cy="78" r="60" fill="url(#lantern-glow)" class="lantern-glow"/>
+            <g class="lantern">
+              <rect x="50" y="38" width="8" height="6" fill="#2a1a10"/>
+              <ellipse cx="54" cy="74" rx="22" ry="30" fill="#d8361f"/>
+              <path d="M33 62 Q54 58 75 62 M32 74 Q54 70 76 74 M33 86 Q54 82 75 86" stroke="#9d2414" stroke-width="1.2" fill="none"/>
+              <text x="54" y="80" font-size="18" font-weight="800" text-anchor="middle" fill="#fff3d0">ら</text>
+              <rect x="49" y="102" width="10" height="5" fill="#2a1a10"/>
+            </g>
+
+            <!-- カウンター -->
+            <rect x="0" y="236" width="300" height="84" fill="url(#wood)"/>
+            <path d="M0 252 Q80 248 150 254 T300 250 M0 274 Q90 270 160 276 T300 272 M0 298 Q70 294 140 300 T300 296" stroke="#7a4c24" stroke-width="1.2" fill="none" opacity="0.6"/>
+            <rect x="0" y="234" width="300" height="5" fill="#d9a46a"/>
+
+            <!-- どんぶり -->
+            <g class="bowl" id="bowl">
+              <ellipse cx="150" cy="238" rx="62" ry="7" fill="#000" opacity="0.3"/>
+              <path d="M56 178 Q60 236 116 236 L184 236 Q240 236 244 178 Z" fill="url(#bowl)"/>
+              <path d="M70 196 L230 196" stroke="#1a0b08" stroke-width="5" stroke-dasharray="7 4" opacity="0.55"/>
+              <ellipse cx="150" cy="176" rx="96" ry="24" fill="#1a0b08"/>
+              <ellipse cx="150" cy="176" rx="92" ry="22" fill="url(#soup)"/>
+              <g clip-path="url(#bowl-top)">
+                <g id="bowl-noodles" class="bowl-noodles"></g>
+                <!-- 具 -->
+                <rect x="78" y="146" width="26" height="30" rx="2" fill="#1d2a1a" transform="rotate(-12 91 161)"/>
+                <ellipse cx="196" cy="172" rx="22" ry="12" fill="#c98a5a"/>
+                <ellipse cx="196" cy="172" rx="15" ry="7" fill="#e7b48a"/>
+                <ellipse cx="128" cy="184" rx="14" ry="9" fill="#fff"/>
+                <ellipse cx="128" cy="184" rx="8" ry="5" fill="#f2a01e"/>
+                <ellipse cx="166" cy="186" rx="11" ry="7" fill="#fbf4f4"/>
+                <path d="M160 186 q3 -4 6 0 t-3 3" stroke="#e8577a" stroke-width="1.6" fill="none"/>
+                <g fill="#5fae3b"><circle cx="112" cy="168" r="2.4"/><circle cx="118" cy="174" r="2"/><circle cx="150" cy="164" r="2.2"/><circle cx="176" cy="160" r="2"/><circle cx="104" cy="180" r="2"/></g>
+              </g>
+            </g>
+
+            <!-- 伸びてあふれた麺（どんぶりのふちから垂れて、カウンターに広がる） -->
+            <g id="overflow" class="overflow"></g>
+
+            <!-- 湯気 -->
+            <g class="steam" id="steam">
+              <path d="M120 150 q-8 -14 0 -26 t0 -26" />
+              <path d="M150 146 q-8 -14 0 -26 t0 -26" />
+              <path d="M180 150 q-8 -14 0 -26 t0 -26" />
+            </g>
+
+            <!-- 箸と持ち上げた麺 -->
+            <g class="chopsticks" id="chopsticks">
+              <g class="lifted">
+                <path d="M164 112 q-6 20 0 34 t0 30" />
+                <path d="M170 112 q6 20 0 34 t0 30" />
+                <path d="M176 112 q-5 20 0 34 t0 30" />
+              </g>
+              <path d="M240 20 L160 116" stroke="#3b2414" stroke-width="5" stroke-linecap="round"/>
+              <path d="M252 26 L174 118" stroke="#4a2e1a" stroke-width="5" stroke-linecap="round"/>
+            </g>
+          </svg>
+
+          <!-- HUD -->
+          <div class="hud">
+            <div class="gauge">
+              <p class="gauge-head"><span>伸び具合</span><span class="gauge-num"><span id="stretch-num">0</span>%</span></p>
+              <div class="gauge-bar" role="progressbar" aria-label="麺の伸び具合" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="gauge-bar">
+                <div class="gauge-fill" id="gauge-fill"></div>
+              </div>
+            </div>
+            <p class="score"><span class="score-label">SCORE</span><span id="score">0</span></p>
+          </div>
+          <p class="mood" id="mood" role="status"></p>
+          <div class="pops" id="pops" aria-hidden="true"></div>
+          <p class="countdown" id="countdown" aria-hidden="true"></p>
+
+          <!-- タイトル -->
+          <section class="overlay overlay-start" aria-labelledby="game-title">
+            <p class="ov-kicker">深夜営業中</p>
+            <p class="ov-title">ラーメンを<br>伸ばすな</p>
+            <p class="ov-lead">伸びる前に、食え。</p>
+            <p class="ov-hint">タップで<b>ズズッ</b>。<br>食べすぎると<b>むせる</b>。</p>
+          </section>
+
+          <!-- 結果 -->
+          <section class="overlay overlay-result" aria-live="polite">
+            <div class="result">
+              <p class="r-title">🍜 のびました。</p>
+              <p class="r-score"><span id="result-score">0</span><small>POINT</small></p>
+              <p class="r-eaten">麺を<b><span id="result-eaten">0</span>%</b>食べました。</p>
+              <p class="r-extra" id="result-extra"></p>
+              <p class="r-quip" id="result-quip"></p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- 操作 -->
+      <div class="counter-deck">
+        <button id="btn-start" class="ramen-btn btn-start" type="button">ゲームスタート</button>
+        <button id="btn-eat" class="ramen-btn btn-eat" type="button">
+          <span class="mouth-fill" id="mouth-fill" aria-hidden="true"></span>
+          <span class="eat-label" id="eat-label">🍜 食べる！</span>
+        </button>
+        <button id="btn-retry" class="ramen-btn btn-retry" type="button" disabled>もう一回食べる</button>
+      </div>
+    </div>
+
+    <div class="sub-actions">
+      <a id="btn-share-x" class="sub-btn btn-x" href="#" target="_blank" rel="noopener">𝕏 結果をシェア</a>
+      <button id="btn-share-native" class="sub-btn" type="button" hidden>ほかのアプリでシェア</button>
+      <a class="sub-btn" href="../../">ほかのゲームで遊ぶ</a>
+    </div>
+  </main>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
