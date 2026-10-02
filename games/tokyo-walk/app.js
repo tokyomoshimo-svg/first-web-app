@@ -1,6 +1,8 @@
 // 東京、歩く。：Three.js で街を描き、engine.js の結果をそのまま表示する
 // Three.js は CDN（jsDelivr）からバージョン固定で読み込む。
 
+import { buildWorld, buildPlayer } from "./city.js";
+
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js";
 
 // engine.js（通常のscript）で宣言された TokyoWalkEngine を使う。window のプロパティではないので直接参照する
@@ -21,7 +23,19 @@ let camPos = null;
 let last = performance.now();
 let mode = "loading";
 let titleAngle = 0.6;
-const awnings = []; // ひさし（真下に入ると、頭が見えるように薄くする）
+let awnings = []; // ひさし（真下に入ると、頭が見えるように薄くする）
+let worldStats = null;
+// 画面の解像度（スマホは 1.5 倍から始め、重ければ下げ、軽ければ上げる）
+const pixelRatio = { max: 1, current: 1, min: 1, frames: 0, time: 0 };
+const SUN_OFFSET = { x: -26, y: 30, z: 18 }; // 夕方の低めの日ざし（南西から）
+
+function countObjects(root) {
+  let n = 0;
+  root.traverse((o) => {
+    if (o.isMesh || o.isLine || o.isPoints) n++;
+  });
+  return n;
+}
 
 function setMode(m) {
   mode = m;
@@ -33,7 +47,16 @@ window.__tokyoWalk = {
   get ready() { return !!THREE && !!renderer; },
   get revision() { return THREE ? THREE.REVISION : null; },
   get mode() { return mode; },
-  snapshot() { return { x: state.x, y: state.y, z: state.z, onGround: state.onGround, jumps: state.jumps, moving: state.moving, camYaw }; },
+  snapshot() {
+    const c = camera ? camera.position : { x: 0, y: 0, z: 0 };
+    return { x: state.x, y: state.y, z: state.z, onGround: state.onGround, jumps: state.jumps, moving: state.moving, camYaw, cam: { x: c.x, y: c.y, z: c.z } };
+  },
+  // 描画の負荷（直前のフレーム）
+  stats() {
+    if (!renderer) return null;
+    const i = renderer.info;
+    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, sceneObjects: scene ? countObjects(scene) : 0, pixelRatio: pixelRatio.current, world: worldStats };
+  },
 };
 
 // =========================================================
@@ -164,308 +187,6 @@ window.addEventListener("blur", () => {
 // 2本指ピンチなどでページが拡大されないように
 document.addEventListener("gesturestart", (e) => e.preventDefault());
 
-// =========================================================
-// テクスチャ（Canvas で作る。画像ファイルは使わない）
-// =========================================================
-
-function canvasTexture(w, h, draw) {
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  draw(c.getContext("2d"), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
-// 窓の並んだ壁（白で描いて、建物の色と掛け合わせる）
-function windowTexture() {
-  return canvasTexture(64, 64, (g) => {
-    g.fillStyle = "#ffffff";
-    g.fillRect(0, 0, 64, 64);
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 2; x++) {
-        g.fillStyle = "#6f87a8";
-        g.fillRect(x * 32 + 7, y * 32 + 8, 18, 16);
-        g.fillStyle = "rgba(255,255,255,0.35)";
-        g.fillRect(x * 32 + 8, y * 32 + 9, 7, 14);
-      }
-    }
-  });
-}
-
-function textTexture(text, bg, fg, w = 256, h = 96) {
-  return canvasTexture(w, h, (g) => {
-    g.fillStyle = bg;
-    g.fillRect(0, 0, w, h);
-    g.strokeStyle = "rgba(255,255,255,0.85)";
-    g.lineWidth = 6;
-    g.strokeRect(5, 5, w - 10, h - 10);
-    g.fillStyle = fg;
-    g.font = `900 ${Math.round(h * 0.52)}px "Hiragino Sans","Noto Sans JP",sans-serif`;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText(text, w / 2, h / 2 + 2, w - 24);
-  });
-}
-
-function vendingTexture() {
-  return canvasTexture(64, 128, (g) => {
-    g.fillStyle = "#e8413a";
-    g.fillRect(0, 0, 64, 128);
-    g.fillStyle = "#f6fbff";
-    g.fillRect(6, 8, 52, 62);
-    const colors = ["#2f7de1", "#f2b134", "#3cb371", "#e8413a", "#8a5cd1", "#1fb5c9"];
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 5; c++) {
-        g.fillStyle = colors[(r * 5 + c) % colors.length];
-        g.fillRect(9 + c * 10, 12 + r * 20, 6, 14);
-      }
-    }
-    g.fillStyle = "#222";
-    g.fillRect(10, 96, 44, 12);
-    g.fillStyle = "#fff";
-    g.fillRect(46, 76, 8, 12);
-  });
-}
-
-// =========================================================
-// 街を作る
-// =========================================================
-
-function buildCity() {
-  const F = E.FIELD;
-  const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
-
-  // ---- 地面 ----
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(F * 2 + 60, F * 2 + 60), lambert("#d6d0c4"));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const flat = (w, d, color, x, z, y = 0.01) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lambert(color));
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x, y, z);
-    m.receiveShadow = true;
-    scene.add(m);
-    return m;
-  };
-
-  // 歩道（道路の両側）
-  flat(F * 2, E.SIDEWALK * 2, "#ebe5d8", 0, 0, 0.005);
-  flat(E.SIDEWALK * 2, F * 2, "#ebe5d8", 0, 0, 0.006);
-  // 道路
-  flat(F * 2, E.ROAD * 2, "#5d6272", 0, 0, 0.02);
-  flat(E.ROAD * 2, F * 2, "#5d6272", 0, 0, 0.021);
-  // 縁石
-  const curbMat = lambert("#c9c3b6");
-  for (const s of [-1, 1]) {
-    for (const [w, d, x, z] of [
-      [F * 2, 0.25, 0, s * E.ROAD],
-      [0.25, F * 2, s * E.ROAD, 0],
-    ]) {
-      const c = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), curbMat);
-      c.position.set(x, 0.06, z);
-      c.receiveShadow = true;
-      scene.add(c);
-    }
-  }
-  // 公園（南西ブロックの一部）
-  flat(17, 22, "#a7d58c", -27.5, 15.5, 0.012);
-
-  // 白線（センターライン）と横断歩道 → 1つのInstancedMeshにまとめる
-  const stripeGeo = new THREE.PlaneGeometry(1, 1);
-  stripeGeo.rotateX(-Math.PI / 2);
-  const stripes = [];
-  for (let t = -F + 2; t < F; t += 4) {
-    if (Math.abs(t) < E.SIDEWALK + 2) continue;
-    stripes.push([t, 0, 2, 0.18]);
-    stripes.push([0, t, 0.18, 2]);
-  }
-  // 横断歩道：交差点の4方向
-  for (const s of [-1, 1]) {
-    for (let k = -3; k <= 3; k++) {
-      stripes.push([k * 1.1, s * (E.ROAD + 1.4), 0.55, 2.2]); // 東西に渡る道の上
-      stripes.push([s * (E.ROAD + 1.4), k * 1.1, 2.2, 0.55]);
-    }
-  }
-  const stripeMesh = new THREE.InstancedMesh(stripeGeo, lambert("#f7f7f2"), stripes.length);
-  const m4 = new THREE.Matrix4();
-  stripes.forEach(([x, z, w, d], i) => {
-    m4.compose(new THREE.Vector3(x, 0.03, z), new THREE.Quaternion(), new THREE.Vector3(w, 1, d));
-    stripeMesh.setMatrixAt(i, m4);
-  });
-  stripeMesh.receiveShadow = true;
-  scene.add(stripeMesh);
-
-  // ---- 建物 ----
-  const winTex = windowTexture();
-  const roofMat = lambert("#b9b4ad");
-  const acMat = lambert("#e6e6e6");
-  const SIGN_COLORS = ["#ff6b6b", "#3a86ff", "#2a9d8f", "#ff9f1c", "#8338ec"];
-  E.BUILDINGS.forEach((b, i) => {
-    const tex = winTex.clone();
-    tex.needsUpdate = true;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(Math.max(1, Math.round(b.w / 3)), Math.max(1, Math.round(b.h / 3)));
-    const texZ = tex.clone();
-    texZ.needsUpdate = true;
-    texZ.repeat.set(Math.max(1, Math.round(b.d / 3)), Math.max(1, Math.round(b.h / 3)));
-    const wallX = lambert(b.color, { map: texZ });
-    const wallZ = lambert(b.color, { map: tex });
-    // 箱の面の順番：+x, -x, +y, -y, +z, -z
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), [wallX, wallX, roofMat, roofMat, wallZ, wallZ]);
-    mesh.position.set(b.x, b.h / 2, b.z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-
-    // 1階のひさし（道路側。位置は engine.js と共有）
-    const aw = E.AWNINGS[i];
-    const { towardX, towardZ } = aw;
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(aw.w, 0.18, aw.d), lambert(SIGN_COLORS[i % SIGN_COLORS.length], { transparent: true }));
-    awning.position.set(aw.x, aw.y, aw.z);
-    awnings.push({ mesh: awning, data: aw });
-    awning.castShadow = true;
-    scene.add(awning);
-
-    // 屋上の室外機
-    const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 1.0), acMat);
-    ac.position.set(b.x - b.w * 0.25, b.h + 0.45, b.z + b.d * 0.2);
-    scene.add(ac);
-
-    // 屋上の看板
-    if (b.sign) {
-      const color = SIGN_COLORS[i % SIGN_COLORS.length];
-      const sw = Math.min(b.w, 8);
-      const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(sw, 2.2, 0.3),
-        [
-          lambert("#fff"), lambert("#fff"), lambert("#fff"), lambert("#fff"),
-          lambert("#fff", { map: textTexture(b.sign, color, "#fff") }),
-          lambert("#fff", { map: textTexture(b.sign, color, "#fff") }),
-        ]
-      );
-      // 東西の道路に面した看板は、文字面が ±x を向くよう回す
-      if (towardX) sign.rotation.y = Math.PI / 2;
-      sign.position.set(b.x + towardX * (b.w / 2 - 0.6), b.h + 1.3, b.z + towardZ * (b.d / 2 - 0.6));
-      sign.castShadow = true;
-      scene.add(sign);
-    }
-  });
-
-  // ---- 街灯（柱と灯りをそれぞれInstancedMeshに） ----
-  const lamps = E.PROPS.filter((p) => p.kind === "lamp");
-  const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 4.2, 6);
-  const headGeo = new THREE.SphereGeometry(0.28, 10, 8);
-  const poles = new THREE.InstancedMesh(poleGeo, lambert("#59607a"), lamps.length);
-  const heads = new THREE.InstancedMesh(headGeo, new THREE.MeshBasicMaterial({ color: "#fff4c8" }), lamps.length);
-  lamps.forEach((p, i) => {
-    m4.makeTranslation(p.x, 2.1, p.z);
-    poles.setMatrixAt(i, m4);
-    m4.makeTranslation(p.x, 4.3, p.z);
-    heads.setMatrixAt(i, m4);
-  });
-  poles.castShadow = true;
-  scene.add(poles, heads);
-
-  // ---- 木 ----
-  const trees = E.PROPS.filter((p) => p.kind === "tree");
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), lambert("#8a5a3b"), trees.length);
-  const leaves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.25, 0), lambert("#6cbf6a", { flatShading: true }), trees.length);
-  trees.forEach((p, i) => {
-    m4.makeTranslation(p.x, 0.8, p.z);
-    trunks.setMatrixAt(i, m4);
-    const s = 0.85 + ((i * 37) % 10) / 25;
-    m4.compose(new THREE.Vector3(p.x, 2.2 * s, p.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, i, 0)), new THREE.Vector3(s, s, s));
-    leaves.setMatrixAt(i, m4);
-  });
-  trunks.castShadow = leaves.castShadow = true;
-  scene.add(trunks, leaves);
-
-  // ---- 自動販売機 ----
-  const vendFront = lambert("#fff", { map: vendingTexture() });
-  const vendBody = lambert("#e8413a");
-  E.PROPS.filter((p) => p.kind === "vending").forEach((p) => {
-    // 箱の面の順番：+x, -x, +y, -y, +z, -z。正面（+z）を道路側へ回す
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, 1.8, p.d), [vendBody, vendBody, vendBody, vendBody, vendFront, vendBody]);
-    mesh.position.set(p.x, 0.9, p.z);
-    mesh.rotation.y = [Math.PI, Math.PI / 2, 0, -Math.PI / 2][p.rot];
-    mesh.castShadow = true;
-    scene.add(mesh);
-  });
-
-  // ---- 立て看板 ----
-  const boardBody = lambert("#3d3f4a");
-  E.PROPS.filter((p) => p.kind === "signboard").forEach((p, i) => {
-    const face = lambert("#fff", { map: textTexture(p.text, ["#ffffff", "#fff3d6", "#e8f6ff", "#eaffea"][i % 4], "#2b2f3f", 128, 128) });
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, 1.1, p.d * 0.4), [boardBody, boardBody, boardBody, boardBody, face, face]);
-    mesh.position.set(p.x, 0.55, p.z);
-    // 文字が道路から読めるように向ける
-    mesh.rotation.y = Math.abs(p.z) < Math.abs(p.x) ? Math.PI / 2 : 0;
-    mesh.castShadow = true;
-    scene.add(mesh);
-  });
-}
-
-// =========================================================
-// 主人公（プリミティブだけの人型）
-// =========================================================
-
-function buildPlayer() {
-  const g = new THREE.Group();
-  const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
-  const skin = mat("#ffd9bd");
-  const hoodie = mat("#4fb3bf");
-  const pants = mat("#3d4466");
-  const shoe = mat("#ff7a7a");
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.45, 4, 10), hoodie);
-  body.position.y = 0.95;
-  g.add(body);
-
-  const head = new THREE.Group();
-  head.position.y = 1.62;
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), skin);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.315, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), mat("#3a3346"));
-  hair.rotation.x = -0.25;
-  const eyeMat = new THREE.MeshBasicMaterial({ color: "#2b2f3f" });
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), eyeMat);
-  const eyeR = eyeL.clone();
-  eyeL.position.set(-0.1, -0.02, 0.27);
-  eyeR.position.set(0.1, -0.02, 0.27);
-  head.add(face, hair, eyeL, eyeR);
-  g.add(head);
-
-  // 腕と脚は付け根で回せるように、グループの中に入れる
-  const limb = (w, h, d, material, x, y) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-    m.position.y = -h / 2;
-    pivot.add(m);
-    g.add(pivot);
-    return { pivot, mesh: m };
-  };
-  const armL = limb(0.14, 0.5, 0.14, hoodie, -0.4, 1.25);
-  const armR = limb(0.14, 0.5, 0.14, hoodie, 0.4, 1.25);
-  const legL = limb(0.18, 0.6, 0.2, pants, -0.14, 0.62);
-  const legR = limb(0.18, 0.6, 0.2, pants, 0.14, 0.62);
-  for (const leg of [legL, legR]) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.3), shoe);
-    s.position.set(0, -0.6, 0.05);
-    leg.pivot.add(s);
-  }
-
-  g.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
-  });
-  scene.add(g);
-  return { g, body, head, armL, armR, legL, legR, phase: 0 };
-}
-
 function animatePlayer(dt) {
   const p = player;
   p.g.position.set(state.x, state.y, state.z);
@@ -487,11 +208,13 @@ function animatePlayer(dt) {
 // カメラ
 // =========================================================
 
-const CAM_DIST = 7;
-const CAM_HEIGHT = 4.2;
+// 第2版：少し近く・低めにして、キャラクターと街並みの両方が見えるように
+const CAM_DIST = 6.4;
+const CAM_HEIGHT = 3.5;
+const LOOK_HEIGHT = 1.55;
 
 function updateCamera(dt, instant) {
-  const headY = state.y + 1.4;
+  const headY = state.y + LOOK_HEIGHT;
   const want = new THREE.Vector3(state.x + Math.sin(camYaw) * CAM_DIST, state.y + CAM_HEIGHT, state.z + Math.cos(camYaw) * CAM_DIST);
   // 建物にめり込まないよう、頭からカメラまでの間に建物があれば手前に寄せる
   const t = E.cameraClip(state.x, headY, state.z, want.x, want.y, want.z);
@@ -505,7 +228,7 @@ function updateCamera(dt, instant) {
   camera.lookAt(state.x, headY, state.z);
 
   // 影の範囲をプレイヤーのまわりに
-  sun.position.set(state.x + 18, 30, state.z + 10);
+  sun.position.set(state.x + SUN_OFFSET.x, SUN_OFFSET.y, state.z + SUN_OFFSET.z);
   sun.target.position.set(state.x, 0, state.z);
 }
 
@@ -558,14 +281,34 @@ function frame(now) {
     // タイトル画面では、空から街全体をゆっくり見回す
     titleAngle += dt * 0.1;
     animatePlayer(dt);
-    camera.position.set(Math.sin(titleAngle) * 36, 26, Math.cos(titleAngle) * 36);
+    camera.position.set(Math.sin(titleAngle) * 40, 27, Math.cos(titleAngle) * 40);
     camera.lookAt(0, 0, 0);
-    sun.position.set(18, 30, 10);
+    sun.position.set(SUN_OFFSET.x, SUN_OFFSET.y, SUN_OFFSET.z);
     sun.target.position.set(0, 0, 0);
   }
 
   renderer.render(scene, camera);
+  adaptResolution(dt);
   requestAnimationFrame(frame);
+}
+
+// スマホ向け：2秒ごとに平均fpsを見て、解像度を少しずつ調整する
+function adaptResolution(dt) {
+  if (!isTouch) return;
+  pixelRatio.frames++;
+  pixelRatio.time += dt;
+  if (pixelRatio.time < 2) return;
+  const fps = pixelRatio.frames / pixelRatio.time;
+  pixelRatio.frames = 0;
+  pixelRatio.time = 0;
+  let next = pixelRatio.current;
+  if (fps < 40) next = Math.max(pixelRatio.min, pixelRatio.current - 0.25);
+  else if (fps > 57) next = Math.min(pixelRatio.max, pixelRatio.current + 0.25);
+  if (next !== pixelRatio.current) {
+    pixelRatio.current = next;
+    renderer.setPixelRatio(next);
+    resize();
+  }
 }
 
 function resize() {
@@ -607,30 +350,41 @@ async function boot() {
   }
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2));
+  pixelRatio.max = Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2);
+  pixelRatio.current = isTouch ? Math.min(pixelRatio.max, 1.5) : pixelRatio.max;
+  renderer.setPixelRatio(pixelRatio.current);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // 夕方のやわらかい色味（後処理は使わず、トーンマッピングだけ）
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color("#bfe3ff");
-  scene.fog = new THREE.Fog("#d7ecff", 40, 95);
+  scene.background = new THREE.Color("#f2d3ba");
+  // 遠くの街が、夕方のもやの中にとけていく
+  scene.fog = new THREE.Fog("#efcfb6", 55, 215);
 
-  camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
 
-  scene.add(new THREE.HemisphereLight("#eaf6ff", "#c9b99c", 1.6));
-  sun = new THREE.DirectionalLight("#fff3dc", 2.2);
+  // 空から：青み、地面から：暖かい照り返し
+  scene.add(new THREE.HemisphereLight("#d9e8ff", "#c0a183", 1.45));
+  // 太陽：低めの角度から暖色の光（影は1枚だけ、プレイヤーの周りに）
+  sun = new THREE.DirectionalLight("#ffd9ae", 2.5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
   const sc = sun.shadow.camera;
-  sc.left = sc.bottom = -22;
-  sc.right = sc.top = 22;
+  sc.left = sc.bottom = -26;
+  sc.right = sc.top = 26;
   sc.near = 1;
-  sc.far = 80;
-  sun.shadow.bias = -0.0008;
+  sc.far = 90;
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun, sun.target);
 
-  buildCity();
-  player = buildPlayer();
+  const world = buildWorld(THREE, E, scene, { isTouch, maxAniso: renderer.capabilities.getMaxAnisotropy() });
+  awnings = world.awnings;
+  worldStats = world.stats;
+  player = buildPlayer(THREE, scene);
 
   resize();
   window.addEventListener("resize", resize);

@@ -51,7 +51,7 @@ const GAMES = [
     id: "tokyo-walk",
     title: "東京、歩く。",
     emoji: "🏙️",
-    description: "小さな3Dの東京を、ただ歩いてみる。スマホはジョイスティック、PCはWASDで。（試作版）",
+    description: "小さな3Dの東京を、ただ歩いてみる。スマホはジョイスティック、PCはWASDで。",
     time: "好きなだけ",
     color: "#3a86ff",
     href: "games/tokyo-walk/",

@@ -108,8 +108,46 @@ for (let run = 1; run <= 10; run++) {
   check(E.cameraClip(0, 1.4, 0, 0, 4.2, 7) === 1, "何もない道路でカメラが寄ってしまう");
 }
 
+// 9. 小物が増えても、街じゅうに歩いて行ける（0.25m 刻みの格子で、スタートから幅優先探索）
+var reachTargets = 0;
+{
+  const STEP = 0.25;
+  const N = Math.round((E.FIELD * 2) / STEP);
+  const idx = (x, z) => Math.round((x + E.FIELD) / STEP) * (N + 1) + Math.round((z + E.FIELD) / STEP);
+  const seen = new Uint8Array((N + 1) * (N + 1));
+  const s0 = E.create();
+  const sx = Math.round(s0.x / STEP) * STEP, sz = Math.round(s0.z / STEP) * STEP;
+  const queue = [[sx, sz]];
+  seen[idx(sx, sz)] = 1;
+  while (queue.length) {
+    const [x, z] = queue.pop();
+    for (const [dx, dz] of [[STEP, 0], [-STEP, 0], [0, STEP], [0, -STEP]]) {
+      const nx = +(x + dx).toFixed(3), nz = +(z + dz).toFixed(3);
+      if (Math.abs(nx) > E.FIELD || Math.abs(nz) > E.FIELD) continue;
+      const k = idx(nx, nz);
+      if (seen[k] || E.blocked(nx, nz)) continue;
+      seen[k] = 1;
+      queue.push([nx, nz]);
+    }
+  }
+  const reach = (x, z, label) => {
+    reachTargets++;
+    // 目標のまわり 0.75m 以内のどこかに行ければよい
+    for (let dx = -0.75; dx <= 0.75; dx += STEP) for (let dz = -0.75; dz <= 0.75; dz += STEP) if (seen[idx(x + dx, z + dz)]) return;
+    check(false, `${label} (${x}, ${z}) に歩いて行けない`);
+  };
+  // 4つの区画の歩道と、道路の向こう側
+  for (const [x, z] of [[20, -5.5], [-20, -5.5], [20, 5.5], [-20, 5.5], [5.5, -20], [-5.5, -20], [5.5, 20], [-5.5, 20], [30, 0], [-30, 0], [0, 30], [0, -30]]) reach(x, z, "歩道・道路");
+  // すべてのお店の正面（ひさしの下）
+  for (const a of E.AWNINGS) reach(+(a.x + a.towardX * 0.9).toFixed(2), +(a.z + a.towardZ * 0.9).toFixed(2), `お店「${a.ref.shop}」の前`);
+  // 公園・コインパーキングの中・横断歩道
+  reach(-27, 20, "公園");
+  reach(30, -13, "コインパーキングの中");
+  for (const [x, z] of [[0, 5.4], [0, -5.4], [5.4, 0], [-5.4, 0]]) reach(x, z, "横断歩道");
+}
+
 if (failed) {
   console.error(`\n${failed} 件の NG`);
   process.exit(1);
 }
-console.log(`OK: 建物${E.BUILDINGS.length}棟に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ`);
+console.log(`OK: 建物${E.BUILDINGS.length}棟に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける`);
