@@ -10,6 +10,7 @@ HTML / CSS / JavaScript だけで動作します（ログイン・データベ�
 | 🚃 終電を逃すな | 電車のドアが乗車位置に来た瞬間に「乗る！」を押すタイミングゲーム |
 | 🏃 東京を走れ | 夜の東京を自動で走り、タップでジャンプして障害物を避ける横スクロールアクション |
 | 🍜 ラーメンを伸ばすな | 麺がどんどん伸びていく。伸び切る前に、タップでひたすら食べる |
+| 🏙️ 東京、歩く。（試作） | 小さな3Dの東京を、スマホのジョイスティックや WASD で歩く（Three.js） |
 
 ## 使い方
 
@@ -30,6 +31,7 @@ python3 -m http.server 8000
 - 終電を逃すな: https://tokyomoshimo-svg.github.io/first-web-app/games/train/
 - 東京を走れ: https://tokyomoshimo-svg.github.io/first-web-app/games/tokyo-run/
 - ラーメンを伸ばすな: https://tokyomoshimo-svg.github.io/first-web-app/games/ramen/
+- 東京、歩く。: https://tokyomoshimo-svg.github.io/first-web-app/games/tokyo-walk/
 
 `master` ブランチのルートにあるファイルがそのまま公開されます。push すると数分で反映されます。
 （`.nojekyll` は、GitHub Pages にファイルを加工させずそのまま配信させるための空ファイルです。）
@@ -65,11 +67,17 @@ games/
     style.css           深夜のラーメン屋風のスタイルと演出
     engine.js           伸び具合・口の中・むせ・替え玉の計算（画面に依存しない）
     app.js              麺の描画・食べる演出・結果・シェア
+  tokyo-walk/           東京、歩く。（Three.js の3D試作。共通CSSは使わず、このフォルダで完結）
+    index.html          画面・HUD・ジョイスティック・JUMP
+    style.css           このページ専用のスタイル（クラス名は tw- から始まる）
+    engine.js           街のデータ・移動・当たり判定・カメラの壁よけ（Three.js に依存しない）
+    app.js              Three.js を CDN から読み込み、街・人・カメラを描画
 scripts/                チェック用スクリプト（公開ページでは使いません）
   check-balance.js      東京の街診断の結果の偏りチェック
   check-court.js        どうでもいい裁判所の判決チェック
   check-tokyo-run.js    東京を走れの公平性チェック（自動プレイで避けられない配置がないか）
   check-ramen.js        ラーメンを伸ばすなのバランスチェック（連打よりリズムが強いか）
+  check-tokyo-walk.js   東京、歩く。の当たり判定チェック（すり抜け・場外・ジャンプ・カメラ）
 ```
 
 ## 新しいゲームを追加するには
@@ -180,6 +188,21 @@ scripts/                チェック用スクリプト（公開ページでは�
 | リズムよく（2回/秒） | 約21秒・3400点前後 |
 
 数値は `games/ramen/engine.js` の `C` で調整でき、`node scripts/check-ramen.js` でバランスを確認できます。
+
+## 東京、歩く。（第1試作）
+
+Three.js で作った小さな3Dの東京風の街を、自由に歩くだけのプロトタイプです。
+
+- Three.js r160 を jsDelivr の CDN から読み込み（`https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js`）。
+  読み込めないときは画面にエラーを表示します
+- 街は約80m四方：十字の道路・歩道・横断歩道・建物14棟・街灯24本・木15本・自販機5台・立て看板4つ・屋上看板・公園
+- 建物・街灯・木・自販機・看板には当たり判定あり（すり抜けない）。フィールドの外には出られない
+- 移動は最高 3.4m/秒、ジャンプは約1m（空中ジャンプなし）
+- カメラは斜め後ろからの3人称。建物・ひさし・木の葉で視線がさえぎられるときは手前に寄る。ひさしの下に入るとひさしが半透明になる
+- 操作
+  - スマホ：左下のジョイスティック（触れた場所が中心）で移動、右下の JUMP、右側をなぞってカメラを回す
+  - PC：WASD / 矢印キーで移動、Space でジャンプ、Q / E でカメラを回す
+- スマホ向けの軽量化：影は1枚（プレイヤーの周りだけ）、街灯・木・白線は InstancedMesh、ピクセル比は最大1.75
 
 ## 東京の街診断
 
