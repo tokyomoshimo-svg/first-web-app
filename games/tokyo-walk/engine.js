@@ -40,50 +40,50 @@ const TokyoWalkEngine = (() => {
   //   shop / vsign（袖看板）/ sign（屋上看板）
   const BUILDINGS = [
     // 北東ブロック（東西の道路沿いにはコインパーキング）
-    { ...rect(8, 17.5, -17, -8), h: 14, face: "x", color: "#d9cfc0", style: "mixed", shop: "Cafe こもれび", shopKind: "cafe", vsign: "喫茶", sign: "カフェ" },
-    { ...rect(8, 17, -29, -18.5), h: 20, face: "x", color: "#c9d0d4", style: "office", shop: "まちかど不動産", shopKind: "realty", vsign: "不動産", sign: "TOKYO" },
-    { ...rect(8, 18, -39.5, -30.2), h: 11, face: "x", color: "#e9e4da", style: "apartment", shop: "さくら歯科", shopKind: "dental", vsign: "歯科" },
+    { ...rect(8, 17.05, -17, -8), h: 14, face: "x", color: "#d9cfc0", style: "mixed", shop: "Cafe こもれび", shopKind: "cafe", vsign: "喫茶", sign: "カフェ" },
+    { ...rect(8, 17, -28.4, -19.4), h: 20, face: "x", color: "#c9d0d4", style: "office", shop: "まちかど不動産", shopKind: "realty", vsign: "不動産", sign: "TOKYO" },
+    { ...rect(8, 18, -44, -30.8), h: 11, face: "x", color: "#e9e4da", style: "apartment", shop: "さくら歯科", shopKind: "dental", vsign: "歯科" },
     // 北西ブロック
-    { ...rect(-17, -8, -16.5, -8), h: 10, face: "z", color: "#9c8571", style: "old", shop: "らーめん 夜なき", shopKind: "ramen", vsign: "ラーメン", sign: "ラーメン" },
-    { ...rect(-39.5, -30.3, -18, -8), h: 16, face: "z", color: "#e3d3cf", style: "apartment", shop: "Hair nami", shopKind: "salon", vsign: "美容室" },
-    { ...rect(-15.5, -8, -27, -18), h: 8, face: "x", color: "#c7cbc6", style: "old", shop: "しろたえクリーニング", shopKind: "cleaning", vsign: "クリーニング" },
-    { ...rect(-29, -18.5, -17, -8), h: 13, face: "z", color: "#a9aaa6", style: "office", shop: "居酒屋 とりあえず", shopKind: "izakaya", vsign: "居酒屋", sign: "居酒屋" },
+    { ...rect(-16.55, -8, -16.05, -8), h: 10, face: "z", color: "#9c8571", style: "old", shop: "らーめん 夜なき", shopKind: "ramen", vsign: "ラーメン", sign: "ラーメン" },
+    { ...rect(-39.5, -31, -18, -8), h: 16, face: "z", color: "#e3d3cf", style: "apartment", shop: "Hair nami", shopKind: "salon", vsign: "美容室" },
+    { ...rect(-15.5, -8, -26.6, -18.45), h: 8, face: "x", color: "#c7cbc6", style: "old", shop: "しろたえクリーニング", shopKind: "cleaning", vsign: "クリーニング" },
+    { ...rect(-28.6, -18.95, -18.45, -8), h: 13, face: "z", color: "#a9aaa6", style: "office", shop: "居酒屋 とりあえず", shopKind: "izakaya", vsign: "居酒屋", sign: "居酒屋" },
     // 南東ブロック
-    { ...rect(8, 17.5, 8, 17), h: 12, face: "z", color: "#c9b49c", style: "mixed", shop: "本のしおり堂", shopKind: "books", vsign: "古本", sign: "本屋" },
-    { ...rect(19, 26, 8, 15), h: 7, face: "z", color: "#efe9df", style: "old", shop: "お弁当 こまち", shopKind: "bento", vsign: "弁当" },
-    { ...rect(8, 17, 19, 28.5), h: 9, face: "x", color: "#e2dccf", style: "apartment", shop: "くすりのミドリ", shopKind: "drug", vsign: "薬" },
-    { ...rect(27.5, 39.5, 8, 19), h: 17, face: "z", color: "#c4917c", style: "mixed", shop: "富士見湯", shopKind: "sento", vsign: "ゆ", sign: "銭湯" },
+    { ...rect(8, 17.05, 8, 16.8), h: 12, face: "z", color: "#c9b49c", style: "mixed", shop: "本のしおり堂", shopKind: "books", vsign: "古本", sign: "本屋" },
+    { ...rect(19.45, 25.55, 8, 16.8), h: 7, face: "z", color: "#efe9df", style: "old", shop: "お弁当 こまち", shopKind: "bento", vsign: "弁当" },
+    { ...rect(8, 17, 19.2, 28.05), h: 9, face: "x", color: "#e2dccf", style: "apartment", shop: "くすりのミドリ", shopKind: "drug", vsign: "薬" },
+    { ...rect(27.95, 39.5, 8, 19), h: 17, face: "z", color: "#c4917c", style: "mixed", shop: "富士見湯", shopKind: "sento", vsign: "ゆ", sign: "銭湯" },
     // 南西ブロック（東西の道路沿いは小さな公園）
-    { ...rect(-17.5, -8, 8, 16.5), h: 11, face: "x", color: "#e9e4da", style: "office", shop: "ひまマート", shopKind: "conbini", vsign: "コンビニ", sign: "24H" },
-    { ...rect(-16, -8, 18, 26.5), h: 9, face: "x", color: "#d8c8b6", style: "apartment", shop: "花のアトリエ", shopKind: "flower", vsign: "花" },
+    { ...rect(-17.5, -8, 8, 16.05), h: 11, face: "x", color: "#e9e4da", style: "office", shop: "ひまマート", shopKind: "conbini", vsign: "コンビニ", sign: "24H" },
+    { ...rect(-16, -8, 18.45, 26.05), h: 9, face: "x", color: "#d8c8b6", style: "apartment", shop: "花のアトリエ", shopKind: "flower", vsign: "花" },
   ];
 
   // お店のない建物（道路沿いのすき間を埋める）。ground: 1階の見た目（shutter / residence / lobby）
   const INFILL = [
-    { ...rect(19, 24, -15.5, -8), h: 7, face: "z", color: "#a3abb1", style: "old", ground: "residence" },
-    { ...rect(36.2, 44, -15, -8), h: 9, face: "z", color: "#c8c3ba", style: "apartment", ground: "shutter" },
-    { ...rect(-14, -8, -35, -28.2), h: 12, face: "x", color: "#c2a48c", style: "mixed", ground: "shutter" },
-    { ...rect(-16, -8, -44, -36.2), h: 9, face: "x", color: "#e9e4da", style: "apartment", ground: "residence" },
-    { ...rect(8, 14.5, 30, 36), h: 6, face: "x", color: "#b9c2c0", style: "old", ground: "residence" },
-    { ...rect(8, 18, 37.5, 46), h: 14, face: "x", color: "#cdd3d6", style: "office", ground: "lobby" },
-    { ...rect(-13.5, -8, 28, 33.5), h: 7, face: "x", color: "#b9a48f", style: "old", ground: "shutter" },
-    { ...rect(-17, -8, 35, 44), h: 15, face: "x", color: "#ede6da", style: "apartment", ground: "residence" },
+    { ...rect(19.45, 24.5, -14.5, -8), h: 7, face: "z", color: "#a3abb1", style: "old", ground: "residence" },
+    { ...rect(35.5, 44, -17, -8), h: 9, face: "z", color: "#c8c3ba", style: "apartment", ground: "shutter" },
+    { ...rect(-14, -8, -34.6, -29), h: 12, face: "x", color: "#c2a48c", style: "mixed", ground: "shutter" },
+    { ...rect(-16, -8, -44, -37), h: 9, face: "x", color: "#e9e4da", style: "apartment", ground: "residence" },
+    { ...rect(8, 14.5, 30.45, 35.55), h: 6, face: "x", color: "#b9c2c0", style: "old", ground: "residence" },
+    { ...rect(8, 18, 37.95, 46), h: 14, face: "x", color: "#cdd3d6", style: "office", ground: "lobby" },
+    { ...rect(-13.5, -8, 28.45, 33.05), h: 7, face: "x", color: "#b9a48f", style: "old", ground: "shutter" },
+    { ...rect(-17, -8, 35.45, 44), h: 15, face: "x", color: "#ede6da", style: "apartment", ground: "residence" },
     { ...rect(-44, -36.5, 8, 20), h: 18, face: "z", color: "#c9d0d4", style: "office", ground: "lobby" },
   ];
 
   // 道路沿いの建物の裏（区画の内側）。上の階が道路から見えて、街の奥行きになる
   const BACKS = [
-    { ...rect(17.5, 32, -29.5, -17.6), h: 16, color: "#d8d2c8", style: "apartment" },
-    { ...rect(18.5, 34, -44, -30), h: 23, color: "#c9d0d4", style: "office" },
-    { ...rect(32, 44, -30, -17.2), h: 12, color: "#bcc6cc", style: "mixed" },
-    { ...rect(-31, -16, -30, -17.3), h: 18, color: "#cdbfae", style: "apartment" },
-    { ...rect(-44, -30, -44, -19), h: 24, color: "#8f9599", style: "office" },
-    { ...rect(-29.5, -16.2, -44, -30.5), h: 15, color: "#e9e4da", style: "apartment" },
-    { ...rect(18.5, 27, 16.5, 30), h: 13, color: "#e3d7c6", style: "mixed" },
-    { ...rect(27, 44, 20.5, 44), h: 20, color: "#d5d9dc", style: "apartment" },
-    { ...rect(18.5, 27, 31.5, 44), h: 11, color: "#c8c3ba", style: "old" },
-    { ...rect(-36, -17.5, 26, 44), h: 14, color: "#c6b8a6", style: "apartment" },
-    { ...rect(-44, -36.3, 20.5, 44), h: 21, color: "#c9d0d4", style: "office" },
+    { ...rect(17, 32, -30.8, -17), h: 16, color: "#d8d2c8", style: "apartment" },
+    { ...rect(18, 34, -44, -30), h: 23, color: "#c9d0d4", style: "office" },
+    { ...rect(32, 44, -30, -17), h: 12, color: "#bcc6cc", style: "mixed" },
+    { ...rect(-31, -15.5, -30, -18.45), h: 18, color: "#cdbfae", style: "apartment" },
+    { ...rect(-44, -31, -44, -18), h: 24, color: "#8f9599", style: "office" },
+    { ...rect(-31, -14, -44, -29), h: 15, color: "#e9e4da", style: "apartment" },
+    { ...rect(17, 27.95, 19.2, 30.45), h: 13, color: "#e3d7c6", style: "mixed" },
+    { ...rect(27.95, 44, 19, 44), h: 20, color: "#d5d9dc", style: "apartment" },
+    { ...rect(14.5, 27.95, 30.45, 44), h: 11, color: "#c8c3ba", style: "old" },
+    { ...rect(-36, -16, 26, 44), h: 14, color: "#c6b8a6", style: "apartment" },
+    { ...rect(-44, -36, 20, 44), h: 21, color: "#c9d0d4", style: "office" },
   ];
 
   // コインパーキング（北東ブロックの空き地）
@@ -141,7 +141,7 @@ const TokyoWalkEngine = (() => {
   add({ kind: "hydrant", x: 22.5, z: -7.75, w: 0.5, d: 0.35, solid: false });
   add({ kind: "hydrant", x: -7.75, z: 24.5, w: 0.35, d: 0.5, solid: false });
   // 植木鉢（お店の前の壁ぎわ。見た目だけ）
-  for (const [x, z] of [[7.7, -9.0], [7.7, -15.8], [-9.0, -7.7], [16.6, 7.7], [7.7, 27.8], [-7.7, 26.0]]) add({ kind: "planter", x, z, r: 0.35, solid: false });
+  for (const [x, z] of [[7.7, -9.0], [7.7, -15.8], [-9.0, -7.7], [16.6, 7.7], [7.7, 27.4], [-7.7, 25.4]]) add({ kind: "planter", x, z, r: 0.35, solid: false });
   // ベンチ（公園）
   add({ kind: "bench", x: -25, z: 17.9, w: 1.6, d: 0.55 });
   add({ kind: "bench", x: -31.5, z: 22.8, w: 1.6, d: 0.55 });

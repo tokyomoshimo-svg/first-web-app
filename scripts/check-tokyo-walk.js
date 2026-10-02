@@ -385,9 +385,79 @@ var missionInfo = {};
   missionInfo = { spots: all.length, types: types.size, minPath: Math.min(...lens), maxPath: Math.max(...lens), keys: seenKeys.size, walk: sumWalk / RUNS, dash: sumDash / RUNS, minWalk, maxWalk, faster };
 }
 
+// 16. 通り抜けやすさ：建物・当たり判定の箱どうしのすき間は「くっついている（0.06m 以下）」か
+//     「ふつうに歩ける幅（2.0m 以上）」のどちらか。見た目は通れそうなのに通れない、中途半端なすき間を残さない
+//     （すき間がほかの建物でふさがっている・フィールドの外にある場合は数えない）
+var gapInfo = {};
+{
+  const MIN_W = 2.0, TOUCH = 0.06;
+  const boxes = E.BOXES;
+  const covered = (x, z, self) => Math.abs(x) > E.FIELD || Math.abs(z) > E.FIELD || boxes.some((b, i) => !self.includes(i) && x > b.minX - 0.01 && x < b.maxX + 0.01 && z > b.minZ - 0.01 && z < b.maxZ + 0.01);
+  let pairs = 0, touching = 0;
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j];
+    if (!a.ref.h && !b.ref.h) continue; // 小物どうしは見ない
+    const gx = Math.max(b.minX - a.maxX, a.minX - b.maxX);
+    const gz = Math.max(b.minZ - a.maxZ, a.minZ - b.maxZ);
+    let gap, mids = [];
+    if (gx > 0 && gz < 0) {
+      gap = gx;
+      const x = gx === b.minX - a.maxX ? (a.maxX + b.minX) / 2 : (b.maxX + a.minX) / 2;
+      const z0 = Math.max(a.minZ, b.minZ), z1 = Math.min(a.maxZ, b.maxZ);
+      for (let k = 0; k <= 6; k++) mids.push([x, z0 + ((z1 - z0) * k) / 6]);
+    } else if (gz > 0 && gx < 0) {
+      gap = gz;
+      const z = gz === b.minZ - a.maxZ ? (a.maxZ + b.minZ) / 2 : (b.maxZ + a.minZ) / 2;
+      const x0 = Math.max(a.minX, b.minX), x1 = Math.min(a.maxX, b.maxX);
+      for (let k = 0; k <= 6; k++) mids.push([x0 + ((x1 - x0) * k) / 6, z]);
+    } else continue;
+    pairs++;
+    if (gap <= TOUCH) { touching++; continue; }
+    if (gap >= MIN_W) continue;
+    const open = mids.filter(([x, z]) => !covered(x, z, [i, j]));
+    const name = (bx) => bx.ref.shop || `${bx.ref.kind || "建物"}(${bx.ref.x},${bx.ref.z})`;
+    check(open.length === 0, `中途半端なすき間 ${gap.toFixed(2)}m：${name(a)} と ${name(b)}`);
+  }
+  // 43か所すべてに「幅1.9m 以上の道だけ」を通って行ける（狭い路地を通らないと行けない目的物がない）
+  const STEP = 0.25, N = Math.round((E.FIELD * 2) / STEP) + 1, R = 0.95;
+  const seen = new Uint8Array(N * N);
+  const s0 = E.create();
+  const k0 = Math.round((s0.x + E.FIELD) / STEP) * N + Math.round((s0.z + E.FIELD) / STEP);
+  seen[k0] = 1;
+  const q = [k0];
+  for (let qi = 0; qi < q.length; qi++) {
+    const k = q[qi], gx = Math.floor(k / N), gz = k % N;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = gx + dx, nz = gz + dz;
+      if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+      const nk = nx * N + nz;
+      if (seen[nk]) continue;
+      const x = nx * STEP - E.FIELD, z = nz * STEP - E.FIELD;
+      // 太った体（半径0.95m）でも建物・柵・自販機にぶつからない（細い柱は避けて通れるので数えない）
+      if (Math.abs(x) > E.FIELD - 0.4 || Math.abs(z) > E.FIELD - 0.4) continue;
+      if (E.BOXES.some((b) => x > b.minX - R && x < b.maxX + R && z > b.minZ - R && z < b.maxZ + R)) continue;
+      seen[nk] = 1;
+      q.push(nk);
+    }
+  }
+  let wide = 0;
+  for (const m of MS.allMissions(E)) {
+    let ok = false;
+    for (let k = 0; k < N * N && !ok; k++) {
+      if (!seen[k]) continue;
+      const x = Math.floor(k / N) * STEP - E.FIELD, z = (k % N) * STEP - E.FIELD;
+      ok = m.area ? MS.isFound(m, x, z) : Math.hypot(x - m.x, z - m.z) <= m.r;
+    }
+    check(ok, `${m.key}（${m.label}）は狭い所を通らないと行けない`);
+    if (ok) wide++;
+  }
+  gapInfo = { pairs, touching, wide };
+}
+
 if (failed) {
   console.error(`\n${failed} 件の NG`);
   process.exit(1);
 }
 console.log(`OK: 建物${E.BUILDINGS.length + E.INFILL.length + E.BACKS.length}棟（お店${E.BUILDINGS.length}軒）に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける / 歩道の${laneCount}レーンを減速せずに歩ける / 歩道${camSamples}か所でカメラが寄らない / ダッシュ 最高 ${dashInfo.maxSpeed.toFixed(1)}m/s（${dashInfo.t5.toFixed(2)}秒で加速）・スタミナ ${dashInfo.emptyAt.toFixed(1)}秒で切れて ${dashInfo.full.toFixed(1)}秒で回復 / ダッシュ・ダッシュジャンプで${dashInfo.dashCases}回突進・ランダム走行6回 すり抜けなし / ジャンプ距離 ${dashInfo.jump}`);
 console.log(`OK: 探索の目的 ${missionInfo.types}種類・候補 ${missionInfo.spots}か所すべてに歩いて行ける（道のり ${missionInfo.minPath.toFixed(0)}〜${missionInfo.maxPath.toFixed(0)}m） / 100回のランダム選択で${missionInfo.keys}か所が出た・同じ目的は連続しない / 道順どおりのボット：歩き 平均${missionInfo.walk.toFixed(1)}秒（${missionInfo.minWalk.toFixed(1)}〜${missionInfo.maxWalk.toFixed(1)}秒）・ダッシュ 平均${missionInfo.dash.toFixed(1)}秒（${missionInfo.faster}/100回で短縮） / 時間ボーナス・発見判定`);
+console.log(`OK: 建物・柵・自販機のすき間 ${gapInfo.pairs}組はすべて「くっついている（${gapInfo.touching}組）」か「2m以上」 / 目的物${gapInfo.wide}か所すべてに幅1.9m以上の道だけで行ける`);
