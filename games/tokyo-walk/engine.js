@@ -122,9 +122,7 @@ const TokyoWalkEngine = (() => {
   for (const [x, z, text] of [[7.3, -10.6, "OPEN"], [-12.3, -7.3, "営業中"], [7.3, -21.2, "← 駅"], [-21.2, 7.3, "公園"]]) {
     add({ kind: "signboard", x, z, w: 0.9, d: 0.5, text, solid: false });
   }
-  // 郵便ポスト（車道寄り）
-  add({ kind: "mailbox", x: -CURB, z: -24.5, r: 0.3, solid: false });
-  add({ kind: "mailbox", x: 13, z: -CURB, r: 0.3, solid: false });
+  // 郵便ポストは、探索ミッション（mission.js）の目的物として1つだけ置く
   // ゴミ箱（自販機の横）
   for (const [x, z] of [[7.6, -26.3], [7.6, -25.7], [-26.9, -7.6], [24.1, 7.6]]) add({ kind: "bin", x, z, r: 0.28, solid: false });
   // 自転車（お店の前に壁向きで3台ずつ。見た目だけ）

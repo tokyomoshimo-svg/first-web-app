@@ -3,11 +3,13 @@
 
 import { buildWorld } from "./city.js";
 import { buildPlayer, animatePlayer } from "./player.js";
+import { buildTargets } from "./targets.js";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js";
 
 // engine.js（通常のscript）で宣言された TokyoWalkEngine を使う。window のプロパティではないので直接参照する
 const E = TokyoWalkEngine;
+const MS = TokyoWalkMission; // 探索ミッションのルール（mission.js）
 const $ = (id) => document.getElementById(id);
 const app = $("tw-app");
 const canvas = $("tw-canvas");
@@ -33,6 +35,34 @@ const SUN_OFFSET = { x: -26, y: 30, z: 18 }; // 夕方の低めの日ざし（�
 const SHADOW_CELL = 6;
 let shadowCenter = null;
 let shadowUpdates = 0;
+let targets = null; // 目的物の見た目と発見の演出（targets.js）
+
+// ---- 探索ゲームの進み具合 ----
+//   phase: "brief"（今日の目的を表示中）→ "run"（探索中）→ "found" / "timeup"（演出）→ 結果画面（mode = "result"）
+const game = { phase: "none", mission: null, elapsed: 0, hintStage: 0, shownSec: -1, warn: 0, timer: 0, score: null, lastKey: null, best: null, newBest: false, plays: 0 };
+const BEST_KEY = "tokyoWalkHighScore";
+const TUTORIAL_KEY = "tokyoWalkTutorialSeen";
+// localStorage は使えない環境（プライベートブラウズなど）でも止まらないようにする
+const store = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch (e) {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch (e) {
+      /* 保存できなくてもゲームは続ける */
+    }
+  },
+};
+function loadBest() {
+  const v = parseInt(store.get(BEST_KEY), 10);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
 
 function countObjects(root) {
   let n = 0;
@@ -52,6 +82,11 @@ window.__tokyoWalk = {
   get ready() { return !!THREE && !!renderer; },
   get revision() { return THREE ? THREE.REVISION : null; },
   get mode() { return mode; },
+  get phase() { return game.phase; },
+  mission() {
+    const m = game.mission;
+    return m && { type: m.type, key: m.key, label: m.label, x: m.x, z: m.z, r: m.r, area: m.area || null, spawn: m.spawn || null, elapsed: game.elapsed, remaining: Math.max(0, MS.TIME_LIMIT - game.elapsed), hintStage: game.hintStage, score: game.score, best: game.best, plays: game.plays };
+  },
   snapshot() {
     const c = camera ? camera.position : { x: 0, y: 0, z: 0 };
     return { x: state.x, y: state.y, z: state.z, onGround: state.onGround, jumps: state.jumps, moving: state.moving, speed: state.speed, dash: state.dash, dashing: state.dashing, dashOn: input.dashOn, stamina: state.stamina, tired: state.tired, lands: state.lands, camYaw, fov: camera ? camera.fov : 0, cam: { x: c.x, y: c.y, z: c.z } };
@@ -175,10 +210,22 @@ look.addEventListener("pointermove", (e) => {
 const KEYMAP = { KeyW: "f", ArrowUp: "f", KeyS: "b", ArrowDown: "b", KeyA: "l", ArrowLeft: "l", KeyD: "r", ArrowRight: "r", KeyQ: "q", KeyE: "e" };
 document.addEventListener("keydown", (e) => {
   if (mode !== "play") {
-    if (mode === "title" && (e.code === "Enter" || e.code === "Space") && document.activeElement !== startBtn) {
-      e.preventDefault();
-      startGame();
+    const onButton = document.activeElement && (document.activeElement.tagName === "BUTTON" || document.activeElement.tagName === "A");
+    if ((e.code === "Enter" || e.code === "Space") && !onButton) {
+      if (mode === "title") {
+        e.preventDefault();
+        startGame();
+      } else if (mode === "result") {
+        e.preventDefault();
+        newGame();
+      }
     }
+    return;
+  }
+  // 今日の目的の表示中は、何かキーを押すとスタート
+  if (game.phase === "brief" && !e.repeat) {
+    e.preventDefault();
+    beginRun();
     return;
   }
   if (e.code === "Space") {
@@ -353,16 +400,23 @@ function frame(now) {
   const dt = Math.min(0.05, rawDt);
   last = now;
 
-  if (mode === "play") {
-    if (input.keys.has("q")) camYaw += dt * 1.8;
-    if (input.keys.has("e")) camYaw -= dt * 1.8;
-    const { ix, iz } = readInput();
-    E.step(state, dt, ix, iz, input.jumpQueued, input.dashOn || input.shift);
+  if (mode === "play" || mode === "result") {
+    const running = mode === "play" && game.phase === "run";
+    if (mode === "play") {
+      if (input.keys.has("q")) camYaw += dt * 1.8;
+      if (input.keys.has("e")) camYaw -= dt * 1.8;
+    }
+    // 探索中だけ動ける（目的の表示中・発見の演出中・結果画面では止まる）
+    const { ix, iz } = running ? readInput() : { ix: 0, iz: 0 };
+    E.step(state, dt, ix, iz, running && input.jumpQueued, running && (input.dashOn || input.shift));
     input.jumpQueued = false;
     animatePlayer(player, state, dt);
     updateCamera(dt);
     updateHud(dt);
+    updateCompass();
     awnings.update(state.x, state.z, dt);
+    updateGame(rawDt);
+    targets.update(dt, state.x, state.z, game.phase !== "run" && game.phase !== "brief");
   } else {
     // タイトル画面では、空から街全体をゆっくり見回す
     titleAngle += dt * 0.1;
@@ -430,16 +484,257 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 
-function startGame() {
-  if (mode !== "title") return;
-  setMode("play");
+// =========================================================
+// 探索ゲーム
+// =========================================================
+
+const timeBox = $("tw-time");
+const timeVal = $("tw-time-val");
+const hintEl = $("tw-hint");
+const card = $("tw-card");
+const banner = $("tw-banner");
+const flash = $("tw-flash");
+let hintTimer = 0;
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const mmss = (sec) => `${pad2(Math.floor(sec / 60))}:${pad2(Math.floor(sec % 60))}`;
+
+function showHint(text, ms = 6000) {
+  hintEl.textContent = text;
+  hintEl.classList.add("show");
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hintEl.classList.remove("show"), ms);
+}
+
+// ---- 効果音（Web Audio。最初のタップのあとで用意し、失敗しても無音で続ける） ----
+const sound = {
+  ctx: null,
+  unlock() {
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === "suspended") this.ctx.resume();
+    } catch (e) {
+      this.ctx = null;
+    }
+  },
+  // notes: [周波数, 長さ(秒)] の並び。小さめの音量で順に鳴らす
+  play(notes, type = "triangle", volume = 0.07) {
+    const c = this.ctx;
+    if (!c || c.state !== "running") return;
+    try {
+      let t = c.currentTime + 0.01;
+      for (const [freq, len] of notes) {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = type;
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(volume, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(g).connect(c.destination);
+        o.start(t);
+        o.stop(t + len + 0.02);
+        t += len * 0.85;
+      }
+    } catch (e) {
+      /* 音が鳴らなくてもゲームは続ける */
+    }
+  },
+  start() { this.play([[523, 0.12], [784, 0.18]]); },
+  found() { this.play([[659, 0.1], [784, 0.1], [1047, 0.12], [1319, 0.3]], "triangle", 0.08); },
+  warn() { this.play([[880, 0.12], [880, 0.16]], "sine", 0.05); },
+  tick() { this.play([[740, 0.06]], "sine", 0.035); },
+  timeup() { this.play([[523, 0.18], [392, 0.18], [262, 0.4]], "triangle", 0.07); },
+};
+
+// 方位（N/E/S/W）：カメラの向きに合わせて帯を横にずらす
+const compassStrip = $("tw-compass-strip");
+const COMPASS_PX = 0.55; // 1度あたりのピクセル
+let compassDeg = null;
+(() => {
+  const names = { 0: "N", 90: "E", 180: "S", 270: "W" };
+  let html = "";
+  for (let d = -360; d <= 720; d += 45) {
+    const n = names[((d % 360) + 360) % 360];
+    html += `<span class="${n === "N" ? "n" : n ? "" : "tick"}" style="left:${(d + 360) * COMPASS_PX}px">${n || "·"}</span>`;
+  }
+  compassStrip.innerHTML = html;
+})();
+function updateCompass() {
+  // カメラが見ている向き（北=0、時計回り）
+  const deg = ((((-camYaw * 180) / Math.PI) % 360) + 360) % 360;
+  if (compassDeg !== null && Math.abs(deg - compassDeg) < 0.5) return;
+  compassDeg = deg;
+  compassStrip.style.transform = `translateX(${60 - (deg + 360) * COMPASS_PX}px)`;
+}
+
+function setTimeText(remaining) {
+  const sec = Math.ceil(Math.max(0, remaining));
+  if (sec === game.shownSec) return; // 1秒に1回だけ書きかえる
+  game.shownSec = sec;
+  timeVal.textContent = mmss(sec);
+  const warn = sec <= 30 ? (sec <= 10 ? 2 : 1) : 0;
+  if (warn !== game.warn) {
+    game.warn = warn;
+    timeBox.classList.toggle("warn", warn > 0);
+    timeBox.classList.toggle("last", warn === 2);
+    if (warn === 1 && game.phase === "run") sound.warn();
+  }
+  if (warn === 2 && game.phase === "run" && sec > 0 && sec <= 5) sound.tick();
+}
+
+// 新しいゲーム：新しい目的・新しい場所・新しい制限時間で、スタート地点から
+function newGame() {
+  game.mission = MS.pick(E, Math.random, game.lastKey);
+  game.lastKey = game.mission.key;
+  game.elapsed = 0;
+  game.hintStage = 0;
+  game.shownSec = -1;
+  game.warn = 0;
+  game.score = null;
+  game.newBest = false;
+  game.plays++;
+  state = E.create();
+  input.dashOn = false;
+  input.jumpQueued = false;
+  hud.tired = null;
   camYaw = 0;
   updateCamera(0, true);
-  const hint = $("tw-hint");
-  hint.textContent = isTouch ? "左下で歩く・DASHで走る・右側をなぞって見回す" : "WASDで歩く・Shiftで走る・Spaceでジャンプ";
-  hint.classList.add("show");
-  setTimeout(() => hint.classList.remove("show"), 4000);
+  targets.show(game.mission);
+  $("tw-mission-text").textContent = game.mission.label;
+  timeBox.classList.remove("warn", "last");
+  setTimeText(MS.TIME_LIMIT);
+  hintEl.classList.remove("show");
+  banner.classList.remove("show", "timeup");
+  setMode("play");
+  // 今日の目的。初めての人にだけ、操作を3行で
+  $("tw-card-target").textContent = game.mission.label;
+  const first = !store.get(TUTORIAL_KEY);
+  $("tw-card-tips").hidden = !first;
+  $("tw-card-tap").textContent = isTouch ? "タップでスタート" : "クリックかキーでスタート";
+  card.classList.add("show");
+  game.phase = "brief";
+  clearTimeout(game.timer);
+  game.timer = setTimeout(beginRun, first ? 5000 : 2600);
+  sound.start();
 }
+
+// 目的の表示を閉じて、探索スタート（タイマーはここから）
+function beginRun() {
+  if (game.phase !== "brief") return;
+  clearTimeout(game.timer);
+  card.classList.remove("show");
+  store.set(TUTORIAL_KEY, "1");
+  game.phase = "run";
+}
+card.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  beginRun();
+});
+
+// 毎フレーム：時間を進め、ヒント・発見・時間切れを調べる（DOM は変わったときだけ書きかえる）
+function updateGame(rawDt) {
+  if (game.phase !== "run") return;
+  game.elapsed += Math.min(rawDt, 0.25); // 裏に回っていた時間は数えない
+  const remaining = MS.TIME_LIMIT - game.elapsed;
+  setTimeText(remaining);
+  if (game.hintStage < MS.HINT_TIMES.length && game.elapsed >= MS.HINT_TIMES[game.hintStage]) {
+    showHint(game.hintStage === 0 ? MS.FIRST_HINT : `ヒント：${game.mission.hint}`);
+    game.hintStage++;
+  }
+  if (MS.isFound(game.mission, state.x, state.z)) {
+    onFound(remaining);
+  } else if (remaining <= 0) {
+    onTimeUp();
+  }
+}
+
+function onFound(remaining) {
+  game.phase = "found";
+  const sc = MS.score(remaining);
+  game.score = sc.total;
+  game.clearTime = game.elapsed;
+  input.dashOn = false;
+  targets.burst(state.x, state.z);
+  sound.found();
+  flash.classList.remove("show");
+  void flash.offsetWidth; // アニメーションを最初から
+  flash.classList.add("show");
+  hintEl.classList.remove("show");
+  $("tw-banner-title").textContent = "FOUND!";
+  const l1 = $("tw-banner-line1");
+  const l2 = $("tw-banner-line2");
+  l1.textContent = `+${sc.base} POINT`;
+  l2.textContent = sc.bonus ? `TIME BONUS +${sc.bonus}` : "TIME BONUS なし";
+  l1.classList.remove("show");
+  l2.classList.remove("show");
+  banner.classList.remove("timeup");
+  banner.classList.add("show");
+  setTimeout(() => l1.classList.add("show"), 450);
+  setTimeout(() => l2.classList.add("show"), 950);
+  saveBest(sc.total);
+  game.timer = setTimeout(() => showResult(true), 2600);
+}
+
+function onTimeUp() {
+  game.phase = "timeup";
+  game.score = 0;
+  setTimeText(0);
+  input.dashOn = false;
+  sound.timeup();
+  hintEl.classList.remove("show");
+  $("tw-banner-title").textContent = "TIME UP";
+  $("tw-banner-line1").textContent = "";
+  $("tw-banner-line2").textContent = "";
+  banner.classList.add("show", "timeup");
+  game.best = loadBest();
+  game.timer = setTimeout(() => showResult(false), 2000);
+}
+
+function saveBest(score) {
+  const best = loadBest();
+  game.newBest = best === null || score > best;
+  if (game.newBest) store.set(BEST_KEY, String(score));
+  game.best = game.newBest ? score : best;
+}
+
+function showResult(cleared) {
+  banner.classList.remove("show", "timeup");
+  $("tw-result-title").textContent = cleared ? "MISSION CLEAR" : "TIME UP";
+  $("tw-result-msg").textContent = cleared ? `${game.mission.short || "目的のもの"}を見つけた！` : `今回は${game.mission.short || "目的のもの"}を見つけられませんでした。`;
+  $("tw-result-score").textContent = String(game.score || 0);
+  $("tw-result-time-row").hidden = !cleared;
+  $("tw-result-time").textContent = cleared ? mmss(game.clearTime) : "";
+  $("tw-result-best").textContent = game.best ? String(game.best) : "---";
+  $("tw-result-new").hidden = !(cleared && game.newBest);
+  game.phase = "result";
+  setMode("result");
+  updateTitleBest();
+  // キーボードでも続けられるように
+  setTimeout(() => $("tw-retry").focus({ preventScroll: true }), 50);
+}
+
+function updateTitleBest() {
+  const best = loadBest();
+  const el = $("tw-title-best");
+  el.hidden = !best;
+  if (best) el.textContent = `BEST ${best} POINT`;
+}
+
+function startGame() {
+  if (mode !== "title") return;
+  sound.unlock(); // スマホは、最初のタップの中で音の準備をする
+  newGame();
+}
+
+$("tw-retry").addEventListener("click", () => {
+  sound.unlock();
+  newGame();
+});
 
 startBtn.addEventListener("click", startGame);
 
@@ -498,18 +793,22 @@ async function boot() {
   awnings = world.awnings;
   worldStats = world.stats;
   player = buildPlayer(THREE, scene, { shadowTexture: world.glowTexture });
+  targets = buildTargets(THREE, scene, { glowTexture: world.glowTexture });
 
   resize();
   // 使うシェーダーを最初にまとめて用意する（ひさしの半透明などが初めて出たときに一瞬止まらないように）
   awnings.setPreview(true);
+  targets.setPreview(true);
   renderer.compile(scene, camera);
   awnings.setPreview(false);
+  targets.setPreview(false);
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 200));
 
   setMode("title");
   startBtn.disabled = false;
-  startBtn.textContent = "歩きはじめる";
+  startBtn.textContent = "探索スタート";
+  updateTitleBest();
   requestAnimationFrame((t) => {
     last = t;
     frame(t);

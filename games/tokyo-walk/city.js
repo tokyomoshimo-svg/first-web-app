@@ -1607,7 +1607,8 @@ export function buildWorld(THREE, E, scene, { isTouch, maxAniso = 4 }) {
     const ry = VEND_RY[p.rot];
     const fx = Math.sin(ry);
     const fz = Math.cos(ry);
-    const body = ["#d8423a", "#2f68a8", "#efefea", "#2a9050", "#d8423a"][i % 5];
+    // 赤い自販機は探索ミッションの目的物なので、ふだんの街には置かない（青・白・緑・黒）
+    const body = ["#2f68a8", "#efefea", "#2a9050", "#3b3d45", "#efefea"][i % 5];
     B.props.box(p.x, 0.92, p.z, p.w, 1.84, p.d, body, ry);
     B.detail.box(p.x + fx * 0.06, 1.88, p.z + fz * 0.06, p.w + 0.06, 0.08, p.d + 0.14, shade(body, -0.25), ry, 0, 0, BOX6);
     panel(B.sign, p.x + fx * (p.d / 2 + 0.012), 0.98, p.z + fz * (p.d / 2 + 0.012), p.w * 0.9, 1.6, ry, { rect: A.vending });

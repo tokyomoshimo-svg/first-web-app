@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#bfe3ff">
-  <meta name="description" content="小さな3Dの東京を、スマホで歩いたり走ったりしてみる。">
+  <meta name="description" content="小さな3Dの東京で、街のどこかにある目的のものを3分以内に探す。">
   <title>東京、歩く。｜ちょっと暇つぶし。</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏙️</text></svg>">
   <link rel="stylesheet" href="style.css">
@@ -21,8 +21,9 @@
     <section class="tw-title" aria-labelledby="tw-heading">
       <div class="tw-title-card">
         <h1 class="tw-heading" id="tw-heading">東京、歩く。</h1>
-        <p class="tw-sub">東京を、ただ歩いてみる。</p>
+        <p class="tw-sub">街のどこかにある「目的のもの」を、3分以内に探そう。</p>
         <button class="tw-start" id="tw-start" type="button" disabled>読み込み中…</button>
+        <p class="tw-title-best" id="tw-title-best" hidden></p>
         <ul class="tw-howto">
           <li class="tw-howto-touch">左下で移動・右下でジャンプ／ダッシュ・右側をなぞって見回す</li>
           <li class="tw-howto-pc">WASD / 矢印キーで移動・Shiftで走る・Spaceでジャンプ・Q/Eで見回す</li>
@@ -47,10 +48,63 @@
       <span class="tw-stamina-track"><span class="tw-stamina-bar" id="tw-stamina-bar"></span></span>
     </div>
 
-    <p class="tw-hint" id="tw-hint" aria-hidden="true"></p>
+    <!-- 探索中の表示（上）：残り時間・目的・方位 -->
+    <div class="tw-hud" id="tw-hud">
+      <p class="tw-time" id="tw-time" role="timer"><span class="tw-time-label">TIME</span><b id="tw-time-val">03:00</b></p>
+      <p class="tw-mission" id="tw-mission"><span aria-hidden="true">🎯</span> <span id="tw-mission-text"></span></p>
+      <div class="tw-compass" aria-hidden="true">
+        <div class="tw-compass-strip" id="tw-compass-strip"></div>
+        <i class="tw-compass-mark"></i>
+      </div>
+    </div>
+
+    <!-- ヒント（下に短く） -->
+    <p class="tw-hint" id="tw-hint" role="status" aria-live="polite"></p>
+
+    <!-- 今日の目的（ゲーム開始時。タップで閉じる） -->
+    <div class="tw-card" id="tw-card" role="dialog" aria-labelledby="tw-card-target">
+      <div class="tw-card-box">
+        <p class="tw-card-label">🎯 今日の目的</p>
+        <p class="tw-card-target" id="tw-card-target"></p>
+        <p class="tw-card-limit">制限時間 3分</p>
+        <ul class="tw-card-tips" id="tw-card-tips" hidden>
+          <li class="tw-howto-touch">左下：移動</li>
+          <li class="tw-howto-touch">右下：JUMP / DASH</li>
+          <li class="tw-howto-pc">WASD：移動 ／ Shift：走る ／ Space：ジャンプ</li>
+          <li>街のどこかにある目的のものを探そう</li>
+        </ul>
+        <p class="tw-card-tap" id="tw-card-tap">タップでスタート</p>
+      </div>
+    </div>
+
+    <!-- 発見！ -->
+    <div class="tw-flash" id="tw-flash" aria-hidden="true"></div>
+    <div class="tw-banner" id="tw-banner" role="status" aria-live="assertive">
+      <p class="tw-banner-title" id="tw-banner-title">FOUND!</p>
+      <p class="tw-banner-line" id="tw-banner-line1"></p>
+      <p class="tw-banner-line" id="tw-banner-line2"></p>
+    </div>
+
+    <!-- 結果 -->
+    <section class="tw-result" id="tw-result" aria-labelledby="tw-result-title">
+      <div class="tw-result-card">
+        <p class="tw-result-rule"></p>
+        <h2 class="tw-result-title" id="tw-result-title">MISSION CLEAR</h2>
+        <p class="tw-result-rule"></p>
+        <p class="tw-result-msg" id="tw-result-msg"></p>
+        <dl class="tw-result-list">
+          <div><dt>SCORE</dt><dd><b id="tw-result-score">0</b> POINT</dd></div>
+          <div id="tw-result-time-row"><dt>TIME</dt><dd id="tw-result-time">00:00</dd></div>
+          <div><dt>BEST</dt><dd><b id="tw-result-best">---</b> POINT <span class="tw-result-new" id="tw-result-new" hidden>NEW!</span></dd></div>
+        </dl>
+        <button class="tw-start tw-retry" id="tw-retry" type="button">もう一回探す</button>
+        <a class="tw-result-link" href="../../">← ほかのゲームで遊ぶ（ちょっと暇つぶし。）</a>
+      </div>
+    </section>
   </div>
 
   <script src="engine.js"></script>
+  <script src="mission.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
