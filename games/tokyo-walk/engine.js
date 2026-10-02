@@ -15,11 +15,19 @@ const TokyoWalkEngine = (() => {
   const PLAYER = {
     radius: 0.4,
     walkSpeed: 3.4, // m/秒（小走りくらい）
-    accel: 16, // 歩き出し
-    decel: 22, // 止まるとき（指を離したらすぐ止まる）
+    dashSpeed: 5.8, // ダッシュ（走る）
+    accel: 12, // 歩き出し
+    decel: 18, // 止まるとき（指を離したらすぐ止まる）
+    airAccel: 5, // 空中では向きを変えにくい（勢いが残る）
+    dashIn: 2.6, // ダッシュの効き始め（1/秒）：約0.4秒かけて走り出す
+    dashOut: 3.5, // ダッシュの抜け（1/秒）
     gravity: 20,
     jumpSpeed: 6.6, // 最高到達点 約1.1m
   };
+
+  // スタミナ（0〜1）：満タンから約4秒走れる。歩くと約3.5秒・立ち止まると約2.5秒で満タン。
+  // 0 になったら、0.35 まで戻るまで走れない（約1秒）
+  const STAMINA = { drain: 0.25, regenWalk: 0.29, regenIdle: 0.4, regenDelay: 0.35, recover: 0.35 };
 
   // ---------- 街のデータ ----------
 
@@ -196,6 +204,16 @@ const TokyoWalkEngine = (() => {
       facing: Math.PI, // -z（北）向き
       moving: 0, // 0〜1：歩きアニメの強さ
       jumps: 0,
+      speed: 0, // 地面に沿った速さ（m/秒）
+      dash: 0, // 0〜1：走っている度合い（なめらかに変わる）
+      dashing: false, // いまスタミナを使って走っているか
+      stamina: 1,
+      tired: false, // スタミナ切れ（少し戻るまで走れない）
+      regenWait: 0,
+      airTime: 0,
+      dashJump: false, // 走りながら跳んだか
+      landed: 0, // 着地した瞬間だけ、着地の強さ（0〜1）。次の step で 0 に戻る
+      lands: 0,
     };
   }
 
@@ -280,35 +298,67 @@ const TokyoWalkEngine = (() => {
   }
 
   // 入力 ix, iz は「ワールド座標での向き」（長さ0〜1）。app.js がカメラの向きから変換して渡す
-  function step(s, dt, ix, iz, jump) {
+  // dash: ダッシュの入力（ボタン・Shift を押している／オンになっている）
+  function step(s, dt, ix, iz, jump, dash = false) {
     dt = Math.min(dt, 0.05);
     const len = Math.hypot(ix, iz);
     if (len > 1) {
       ix /= len;
       iz /= len;
     }
+    const mag = Math.min(1, len);
+    s.landed = 0;
 
-    // 速度をなめらかに目標へ（止まるときは少し早めに）
-    const tx = ix * PLAYER.walkSpeed;
-    const tz = iz * PLAYER.walkSpeed;
+    // ---- ダッシュとスタミナ ----
+    // 走れるのは：入力がある・地面にいる（空中では始められない）・スタミナ切れでない
+    const wantDash = dash && mag > 0.3 && !s.tired && s.stamina > 0;
+    const canDash = wantDash && (s.onGround || s.dashing);
+    s.dashing = canDash && Math.hypot(s.vx, s.vz) > 1;
+    if (canDash) s.dash = Math.min(1, s.dash + PLAYER.dashIn * dt);
+    else if (s.onGround) s.dash = Math.max(0, s.dash - PLAYER.dashOut * dt);
+    if (s.dashing) {
+      s.stamina = Math.max(0, s.stamina - STAMINA.drain * dt);
+      s.regenWait = STAMINA.regenDelay;
+      if (s.stamina === 0) s.tired = true;
+    } else if (s.regenWait > 0) {
+      s.regenWait -= dt;
+    } else {
+      s.stamina = Math.min(1, s.stamina + (mag > 0.1 ? STAMINA.regenWalk : STAMINA.regenIdle) * dt);
+    }
+    if (s.tired && s.stamina >= STAMINA.recover) s.tired = false;
+
+    // ---- 速度をなめらかに目標へ ----
+    // 歩き→走りは dash（0〜1）で少しずつ。止まるときは少し早めに。空中は勢いが残る
+    const top = PLAYER.walkSpeed + (PLAYER.dashSpeed - PLAYER.walkSpeed) * s.dash;
+    const tx = ix * top;
+    const tz = iz * top;
     const slowing = tx * tx + tz * tz < s.vx * s.vx + s.vz * s.vz;
-    const a = Math.min(1, (slowing ? PLAYER.decel : PLAYER.accel) * dt);
+    const rate = !s.onGround ? PLAYER.airAccel : slowing ? PLAYER.decel : PLAYER.accel;
+    const a = Math.min(1, rate * dt);
     s.vx += (tx - s.vx) * a;
     s.vz += (tz - s.vz) * a;
 
-    // ジャンプ
+    // ジャンプ（走りながら跳ぶと、その勢いのまま少し遠くまで飛ぶ）
     if (jump && s.onGround) {
       s.vy = PLAYER.jumpSpeed;
       s.onGround = false;
       s.jumps++;
+      s.airTime = 0;
+      s.dashJump = s.dash > 0.5;
     }
     if (!s.onGround) {
+      s.airTime += dt;
+      const fall = s.vy;
       s.vy -= PLAYER.gravity * dt;
       s.y += s.vy * dt;
       if (s.y <= 0) {
         s.y = 0;
         s.vy = 0;
         s.onGround = true;
+        s.lands++;
+        // 着地の強さ：落ちる速さ＋走りジャンプは少し強め
+        s.landed = Math.min(1, Math.max(0.2, -fall / PLAYER.jumpSpeed) * (s.dashJump ? 1 : 0.75));
+        s.dashJump = false;
       }
     }
 
@@ -340,6 +390,7 @@ const TokyoWalkEngine = (() => {
 
     // 向きと歩きアニメ
     const speed = Math.hypot(s.vx, s.vz);
+    s.speed = speed;
     if (speed > 0.3) {
       const target = Math.atan2(s.vx, s.vz);
       let diff = target - s.facing;
@@ -386,7 +437,7 @@ const TokyoWalkEngine = (() => {
     return best;
   }
 
-  return { FIELD, ROAD, SIDEWALK, FRONT, CURB, PLAYER, BUILDINGS, INFILL, BACKS, PARKING, PROPS, AWNINGS, BOXES, CIRCLES, CAMERA_BLOCKERS, create, step, blocked, cameraClip };
+  return { FIELD, ROAD, SIDEWALK, FRONT, CURB, PLAYER, STAMINA, BUILDINGS, INFILL, BACKS, PARKING, PROPS, AWNINGS, BOXES, CIRCLES, CAMERA_BLOCKERS, create, step, blocked, cameraClip };
 })();
 
 if (typeof module !== "undefined") module.exports = TokyoWalkEngine;

@@ -142,6 +142,7 @@ body.tw-body {
 
 .tw-start:focus-visible,
 .tw-jump:focus-visible,
+.tw-dash:focus-visible,
 .tw-back:focus-visible {
   outline: 3px solid #ffd166;
   outline-offset: 2px;
@@ -177,13 +178,17 @@ body.tw-body {
 
 .tw-joy-zone,
 .tw-look,
-.tw-jump {
+.tw-jump,
+.tw-dash,
+.tw-stamina {
   display: none;
 }
 
 [data-state="play"] .tw-joy-zone,
 [data-state="play"] .tw-look,
-[data-state="play"] .tw-jump {
+[data-state="play"] .tw-jump,
+[data-state="play"] .tw-dash,
+[data-state="play"] .tw-stamina {
   display: block;
 }
 
@@ -265,6 +270,100 @@ body.tw-body {
   box-shadow: 0 1px 0 #d4573f;
 }
 
+/* DASH：JUMP の左上。押すとオン（明るくなる）、スタミナ切れのときは暗くなる */
+.tw-dash {
+  position: absolute;
+  right: calc(max(22px, env(safe-area-inset-right)) + 70px);
+  bottom: calc(max(34px, env(safe-area-inset-bottom)) + 72px);
+  z-index: 11;
+  width: 64px;
+  height: 64px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  background: rgba(43, 47, 63, 0.55);
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 12px rgba(30, 50, 100, 0.25);
+  cursor: pointer;
+  touch-action: none;
+  transition: background 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+}
+
+.tw-dash.on {
+  background: linear-gradient(#5fd3c4, #2fa79a);
+  border-color: #fff;
+  transform: scale(1.06);
+}
+
+.tw-dash.tired {
+  opacity: 0.45;
+}
+
+/* スタミナ：DASH ボタンの上に小さく。走っている間と回復中だけ見える */
+.tw-stamina {
+  position: absolute;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: calc(max(34px, env(safe-area-inset-bottom)) + 146px);
+  z-index: 11;
+  width: 104px;
+  padding: 4px 8px 6px;
+  border-radius: 10px;
+  background: rgba(43, 47, 63, 0.55);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  pointer-events: none;
+}
+
+.tw-stamina.show {
+  opacity: 1;
+  transform: none;
+}
+
+.tw-stamina-label {
+  display: block;
+  color: #fff;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+}
+
+.tw-stamina-track {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.tw-stamina-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5fd3c4, #b8f0a0);
+  transform-origin: left center;
+  transition: background 0.3s ease;
+}
+
+.tw-stamina.low .tw-stamina-bar {
+  background: linear-gradient(90deg, #ff9f5a, #ffd166);
+}
+
+.tw-stamina.tired .tw-stamina-bar {
+  background: #ff7a6b;
+  animation: tw-blink 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes tw-blink {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
+}
+
 /* PCでは画面上の操作ボタンを小さく控えめに（キーボード操作が主） */
 @media (hover: hover) and (pointer: fine) {
   .tw-joy { opacity: 0.45; }
@@ -295,4 +394,6 @@ body.tw-body {
 @media (max-width: 360px) {
   .tw-back, .tw-badge { font-size: 0.68rem; padding: 3px 8px; }
   .tw-jump { width: 76px; height: 76px; }
+  .tw-dash { width: 58px; height: 58px; right: calc(max(22px, env(safe-area-inset-right)) + 62px); bottom: calc(max(34px, env(safe-area-inset-bottom)) + 66px); }
+  .tw-stamina { bottom: calc(max(34px, env(safe-area-inset-bottom)) + 132px); }
 }

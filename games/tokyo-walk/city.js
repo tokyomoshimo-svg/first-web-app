@@ -109,7 +109,7 @@ function withoutGroups(geo, drop) {
   return geo;
 }
 
-function createKit(THREE) {
+export function createKit(THREE) {
   // 底のない箱（地面・壁・屋上に置く物。底面は見えない）：三角形10枚
   const BOX = withoutGroups(new THREE.BoxGeometry(1, 1, 1), [3]);
   // 6面ある箱（宙に浮いている物：看板の枠・手すり・ひさし）
@@ -1959,87 +1959,4 @@ export function buildWorld(THREE, E, scene, { isTouch, maxAniso = 4 }) {
   stats.atlasUsed = Math.round(atlas.used * 100) + "%";
 
   return { awnings, stats, glowTexture: tex.glow };
-}
-
-// =========================================================
-// キャラクター（性別がはっきりしない、少しデフォルメした人）
-// =========================================================
-
-export function buildPlayer(THREE, scene, { shadowTexture } = {}) {
-  const K = createKit(THREE);
-  const { M, Batch, BOX6 } = K;
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const C = { skin: "#ffd6b8", hoodie: "#4aa3b2", hoodieDark: "#3a8694", pants: "#394057", hair: "#3a3142", hairLight: "#4d4257", shoe: "#f4f2ee", shoeAccent: "#ef6f68", sole: "#d9d6cf", bag: "#e3a63c", bagDark: "#c48a28", white: "#f4f2ee", eye: "#2b2f3f", blush: "#ffb0a8" };
-  const CAPSULE = (r, l, cap = 3, radial = 8) => new THREE.CapsuleGeometry(r, l, cap, radial);
-  const SPH = (w, h) => new THREE.SphereGeometry(0.5, w, h);
-
-  // 部位ごとに「まとめて1メッシュ」にして、Group に入れる（描画回数を減らす）
-  const part = (build, x = 0, y = 0) => {
-    const b = new Batch();
-    build(b);
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-    const mesh = b.meshes(mat)[0];
-    pivot.add(mesh);
-    g.add(pivot);
-    return pivot;
-  };
-
-  // 体（パーカー・フード・ポケット・ひも・リュック）
-  const body = part((b) => {
-    b.add(CAPSULE(0.3, 0.42, 3, 10), M(0, 0, 0, 1, 1, 0.92), C.hoodie);
-    b.add(SPH(8, 5), M(0, 0.36, -0.18, 0.56, 0.3, 0.36), C.hoodieDark);
-    b.box(0, -0.12, 0.27, 0.36, 0.14, 0.04, C.hoodieDark, 0, 0, 0, BOX6);
-    b.box(-0.05, 0.16, 0.285, 0.025, 0.2, 0.02, C.white, 0, 0, 0, BOX6);
-    b.box(0.05, 0.16, 0.285, 0.025, 0.2, 0.02, C.white, 0, 0, 0, BOX6);
-    b.box(0, 0.04, -0.33, 0.42, 0.48, 0.2, C.bag, 0, 0, 0, BOX6);
-    b.box(0, 0.3, -0.33, 0.44, 0.1, 0.22, C.bagDark, 0, 0, 0, BOX6);
-    b.box(0, -0.06, -0.44, 0.3, 0.18, 0.05, C.bagDark, 0, 0, 0, BOX6);
-  }, 0, 0.95);
-
-  // 頭（顔・ボブっぽい髪・前髪・目・ほっぺ）
-  const head = part((b) => {
-    b.add(SPH(12, 9), M(0, 0, 0, 0.6, 0.6, 0.6), C.skin);
-    b.add(SPH(12, 8), M(0, -0.06, -0.08, 0.65, 0.53, 0.5), C.hair);
-    b.add(new THREE.SphereGeometry(0.325, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), M(0, 0, 0, 1, 1, 1, 0, -0.3), C.hair);
-    b.box(0, 0.14, 0.24, 0.44, 0.1, 0.12, C.hairLight, 0, 0.35, 0, BOX6);
-    for (const s of [-1, 1]) {
-      b.add(SPH(6, 4), M(s * 0.1, -0.01, 0.272, 0.084, 0.09, 0.06), C.eye);
-      b.add(SPH(6, 4), M(s * 0.17, -0.09, 0.24, 0.09, 0.045, 0.027), C.blush);
-    }
-  }, 0, 1.62);
-
-  // 腕（袖＋手）・脚（ズボン＋靴＋ソール）は付け根で回せるように
-  const arm = (x) => part((b) => {
-    b.add(CAPSULE(0.075, 0.3, 2, 6), M(0, -0.22, 0), C.hoodie);
-    b.add(CAPSULE(0.08, 0.02, 2, 6), M(0, -0.4, 0), C.hoodieDark);
-    b.add(SPH(6, 4), M(0, -0.47, 0, 0.15, 0.15, 0.15), C.skin);
-  }, x, 1.25);
-  const leg = (x) => part((b) => {
-    b.add(CAPSULE(0.09, 0.36, 2, 6), M(0, -0.26, 0), C.pants);
-    b.box(0, -0.55, 0.05, 0.19, 0.12, 0.3, C.shoe, 0, 0, 0, BOX6);
-    b.box(0, -0.53, 0.0, 0.195, 0.04, 0.2, C.shoeAccent, 0, 0, 0, BOX6);
-    b.box(0, -0.62, 0.05, 0.21, 0.04, 0.32, C.sole, 0, 0, 0, BOX6);
-  }, x, 0.62);
-
-  const armL = { pivot: arm(-0.38) };
-  const armR = { pivot: arm(0.38) };
-  const legL = { pivot: leg(-0.13) };
-  const legR = { pivot: leg(0.13) };
-
-  scene.add(g);
-
-  // 足もとの丸い影（太陽の影の地図にはプレイヤーを入れず、これで代わりにする → 影を毎フレーム描き直さなくてよい）
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ map: shadowTexture, color: "#000000", transparent: true, opacity: 0.38, depthWrite: false })
-  );
-  shadow.scale.set(1.1, 1, 1.1);
-  shadow.renderOrder = 3;
-  shadow.name = "player-shadow";
-  scene.add(shadow);
-
-  // body/head は歩くときに上下させる（app.js の animatePlayer が使う）
-  return { g, body, head, armL, armR, legL, legR, shadow, phase: 0 };
 }

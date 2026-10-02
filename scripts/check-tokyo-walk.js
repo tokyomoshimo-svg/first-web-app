@@ -181,8 +181,91 @@ for (const arm of ["E", "W", "S", "N"]) for (const side of [-1, 1]) for (let off
   var camSamples = samples;
 }
 
+// 12. ダッシュ：少しずつ速くなり、上限は dashSpeed。スタミナが減り、切れると走れず、休むと戻る
+var dashInfo = {};
+{
+  const s = Object.assign(E.create(), { x: 0, z: 30 });
+  let t5 = null, maxSpeed = 0, emptyAt = null;
+  for (let i = 0; i < 60 * 8; i++) {
+    E.step(s, DT, 0, -1, false, true);
+    maxSpeed = Math.max(maxSpeed, s.speed);
+    if (t5 === null && s.speed > 5.3) t5 = i / 60;
+    if (emptyAt === null && s.tired) emptyAt = i / 60;
+    if (s.z < -30) { s.z = 30; } // 道路の上を往復するかわりに、位置だけ戻す
+  }
+  check(maxSpeed <= E.PLAYER.dashSpeed + 1e-6, `ダッシュが速すぎる: ${maxSpeed}`);
+  check(maxSpeed > E.PLAYER.walkSpeed * 1.5, `ダッシュが遅い: ${maxSpeed}`);
+  check(t5 !== null && t5 > 0.25 && t5 < 1.2, `走り出しが急すぎる／遅すぎる: ${t5}秒`);
+  check(emptyAt !== null && emptyAt > 3 && emptyAt < 5.5, `スタミナが切れるまでの時間が想定外: ${emptyAt}秒`);
+  // 切れた直後はボタンを押していても歩く速さ
+  const tired = Object.assign(E.create(), { x: 0, z: 30, stamina: 0, tired: true });
+  let sp = 0;
+  for (let i = 0; i < 30; i++) { E.step(tired, DT, 0, -1, false, true); sp = Math.max(sp, tired.speed); }
+  check(sp <= E.PLAYER.walkSpeed + 1e-6, `スタミナ切れなのに走れる: ${sp}`);
+  // 休むと戻る：立ち止まって満タンまで
+  let full = null;
+  const rest = Object.assign(E.create(), { x: 0, z: 30, stamina: 0, tired: true });
+  for (let i = 0; i < 60 * 6 && full === null; i++) { E.step(rest, DT, 0, 0, false, false); if (rest.stamina >= 1) full = i / 60; }
+  check(full !== null && full < 4, `スタミナが戻らない: ${full}`);
+  // 走って止まる：指を離してから 0.4 秒でほぼ止まる
+  const stop = Object.assign(E.create(), { x: 0, z: 30 });
+  for (let i = 0; i < 90; i++) E.step(stop, DT, 0, -1, false, true);
+  for (let i = 0; i < 24; i++) E.step(stop, DT, 0, 0, false, false);
+  check(stop.speed < 0.3, `止まるまで滑りすぎる: ${stop.speed}`);
+  dashInfo = { maxSpeed, t5, emptyAt, full };
+}
+
+// 13. ダッシュ・ダッシュジャンプでも建物をすり抜けない／外に出ない
+{
+  let n = 0;
+  for (const b of [...E.BUILDINGS, ...E.INFILL, ...E.BACKS]) {
+    for (const [ix, iz, x, z] of [[1, 0, b.x - b.w / 2 - 6, b.z], [-1, 0, b.x + b.w / 2 + 6, b.z], [0, 1, b.x, b.z - b.d / 2 - 6], [0, -1, b.x, b.z + b.d / 2 + 6]]) {
+      if (Math.abs(x) > E.FIELD - 1 || Math.abs(z) > E.FIELD - 1 || E.blocked(x, z)) continue;
+      for (const jumpAt of [-1, 20]) {
+        const s = Object.assign(E.create(), { x, z });
+        for (let i = 0; i < 60 * 4; i++) {
+          E.step(s, DT, ix, iz, i === jumpAt, true);
+          if (E.blocked(s.x, s.z)) { check(false, `ダッシュで建物(${b.x},${b.z})にめり込んだ`); break; }
+        }
+        const inside = s.x > b.x - b.w / 2 && s.x < b.x + b.w / 2 && s.z > b.z - b.d / 2 && s.z < b.z + b.d / 2;
+        check(!inside, `ダッシュで建物(${b.x},${b.z})をすり抜けた`);
+        n++;
+      }
+    }
+  }
+  // ダッシュ＋ジャンプを混ぜてランダムに走り回る
+  for (let run = 1; run <= 6; run++) {
+    let seed = run * 104729;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const s = E.create();
+    let ix = 0, iz = 0, dash = false;
+    for (let i = 0; i < 20000; i++) {
+      if (i % 70 === 0) { const a = rnd() * Math.PI * 2; ix = Math.cos(a); iz = Math.sin(a); dash = rnd() < 0.6; }
+      E.step(s, DT, ix, iz, rnd() < 0.02, dash);
+      if (E.blocked(s.x, s.z)) { check(false, `ダッシュのランダム走行${run}で (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) にめり込んだ`); break; }
+      if (s.y < 0 || s.y > 1.2) { check(false, `高さがおかしい: ${s.y}`); break; }
+    }
+  }
+  // ダッシュジャンプの距離：歩きジャンプより遠く、でも 4.5m 以内（建物は飛び越えられない）
+  const dist = (dash) => {
+    const s = Object.assign(E.create(), { x: 0, z: 30 });
+    for (let i = 0; i < 90; i++) E.step(s, DT, 0, -1, false, dash);
+    const z0 = s.z;
+    E.step(s, DT, 0, -1, true, dash);
+    let apex = 0;
+    while (!s.onGround) { E.step(s, DT, 0, -1, false, dash); apex = Math.max(apex, s.y); }
+    return { d: z0 - s.z, apex, landed: s.landed };
+  };
+  const wj = dist(false), dj = dist(true);
+  check(dj.d > wj.d + 0.8 && dj.d < 4.5, `ダッシュジャンプの距離が想定外: 歩き ${wj.d.toFixed(2)}m / 走り ${dj.d.toFixed(2)}m`);
+  check(Math.abs(dj.apex - wj.apex) < 0.01, "ダッシュで高く跳べてしまう");
+  check(dj.landed > wj.landed, "ダッシュジャンプの着地が弱い");
+  dashInfo.dashCases = n;
+  dashInfo.jump = `歩き ${wj.d.toFixed(1)}m / 走り ${dj.d.toFixed(1)}m`;
+}
+
 if (failed) {
   console.error(`\n${failed} 件の NG`);
   process.exit(1);
 }
-console.log(`OK: 建物${E.BUILDINGS.length + E.INFILL.length + E.BACKS.length}棟（お店${E.BUILDINGS.length}軒）に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける / 歩道の${laneCount}レーンを減速せずに歩ける / 歩道${camSamples}か所でカメラが寄らない`);
+console.log(`OK: 建物${E.BUILDINGS.length + E.INFILL.length + E.BACKS.length}棟（お店${E.BUILDINGS.length}軒）に${wallHits}方向から突進してもすり抜けない / 壁ずり / 街灯・木 / 4方向の端で停止 / 最高速 ${E.PLAYER.walkSpeed}m/s / ジャンプ ${jumpApex.toFixed(2)}m・空中ジャンプなし / ランダム歩行2万歩×10回（最遠 ${wander.toFixed(1)}m） / カメラの壁よけ / 街の${reachTargets}か所すべてに歩いて行ける / 歩道の${laneCount}レーンを減速せずに歩ける / 歩道${camSamples}か所でカメラが寄らない / ダッシュ 最高 ${dashInfo.maxSpeed.toFixed(1)}m/s（${dashInfo.t5.toFixed(2)}秒で加速）・スタミナ ${dashInfo.emptyAt.toFixed(1)}秒で切れて ${dashInfo.full.toFixed(1)}秒で回復 / ダッシュ・ダッシュジャンプで${dashInfo.dashCases}回突進・ランダム走行6回 すり抜けなし / ジャンプ距離 ${dashInfo.jump}`);

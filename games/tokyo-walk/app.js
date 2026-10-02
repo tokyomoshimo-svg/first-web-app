@@ -1,7 +1,8 @@
 // 東京、歩く。：Three.js で街を描き、engine.js の結果をそのまま表示する
 // Three.js は CDN（jsDelivr）からバージョン固定で読み込む。
 
-import { buildWorld, buildPlayer } from "./city.js";
+import { buildWorld } from "./city.js";
+import { buildPlayer, animatePlayer } from "./player.js";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js";
 
@@ -53,13 +54,13 @@ window.__tokyoWalk = {
   get mode() { return mode; },
   snapshot() {
     const c = camera ? camera.position : { x: 0, y: 0, z: 0 };
-    return { x: state.x, y: state.y, z: state.z, onGround: state.onGround, jumps: state.jumps, moving: state.moving, camYaw, cam: { x: c.x, y: c.y, z: c.z } };
+    return { x: state.x, y: state.y, z: state.z, onGround: state.onGround, jumps: state.jumps, moving: state.moving, speed: state.speed, dash: state.dash, dashing: state.dashing, dashOn: input.dashOn, stamina: state.stamina, tired: state.tired, lands: state.lands, camYaw, fov: camera ? camera.fov : 0, cam: { x: c.x, y: c.y, z: c.z } };
   },
   // 描画の負荷（直前のフレーム）
   stats() {
     if (!renderer) return null;
     const i = renderer.info;
-    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, sceneObjects: scene ? countObjects(scene) : 0, pixelRatio: pixelRatio.current, pixelRatioChanges: pixelRatio.changes, softShadows: renderer.shadowMap.type !== THREE.BasicShadowMap, shadowUpdates, world: worldStats };
+    return { player: player ? { tris: player.tris, meshes: player.meshes } : null, calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, sceneObjects: scene ? countObjects(scene) : 0, pixelRatio: pixelRatio.current, pixelRatioChanges: pixelRatio.changes, softShadows: renderer.shadowMap.type !== THREE.BasicShadowMap, shadowUpdates, world: worldStats };
   },
 };
 
@@ -67,7 +68,8 @@ window.__tokyoWalk = {
 // 入力
 // =========================================================
 
-const input = { jx: 0, jy: 0, jumpQueued: false, keys: new Set() };
+// dashOn：スマホの DASH ボタン（押すとオン、もう一度押すかスタミナが切れるとオフ）。shift：PC の Shift キー
+const input = { jx: 0, jy: 0, jumpQueued: false, keys: new Set(), dashOn: false, shift: false };
 
 // ---- 仮想ジョイスティック（左下。触れた場所が中心になる） ----
 const joyZone = $("tw-joy-zone");
@@ -115,7 +117,8 @@ function moveJoy(e) {
   joy.style.setProperty("--ky", dy + "px");
   const mag = Math.min(1, len / JOY_R);
   const dead = 0.12;
-  const k = mag < dead ? 0 : (mag - dead) / (1 - dead) / Math.max(mag, 1e-6);
+  // 少し倒しただけでは急に速くならないように、ゆるやかな曲線で強さを決める
+  const k = mag < dead ? 0 : Math.pow((mag - dead) / (1 - dead), 1.35) / Math.max(mag, 1e-6);
   input.jx = (dx / JOY_R) * k;
   input.jy = (-dy / JOY_R) * k; // 上が前
 }
@@ -137,6 +140,14 @@ jumpBtn.addEventListener("pointerdown", (e) => {
   jumpBtn.classList.add("pressed");
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach((t) => jumpBtn.addEventListener(t, () => jumpBtn.classList.remove("pressed")));
+
+// ---- ダッシュボタン（押すたびにオン・オフ） ----
+const dashBtn = $("tw-dash");
+dashBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  input.dashOn = !input.dashOn;
+  updateDashButton();
+});
 
 // ---- 右側をなぞってカメラを回す ----
 const look = $("tw-look");
@@ -175,6 +186,10 @@ document.addEventListener("keydown", (e) => {
     if (!e.repeat) input.jumpQueued = true;
     return;
   }
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    input.shift = true;
+    return;
+  }
   if (KEYMAP[e.code]) {
     e.preventDefault();
     input.keys.add(KEYMAP[e.code]);
@@ -182,53 +197,83 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => {
   if (KEYMAP[e.code]) input.keys.delete(KEYMAP[e.code]);
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") input.shift = false;
 });
 window.addEventListener("blur", () => {
   input.keys.clear();
+  input.shift = false;
   resetJoy();
 });
 
 // 2本指ピンチなどでページが拡大されないように
 document.addEventListener("gesturestart", (e) => e.preventDefault());
 
-function animatePlayer(dt) {
-  const p = player;
-  p.g.position.set(state.x, state.y, state.z);
-  p.g.rotation.y = state.facing;
+// ---- スタミナの表示・DASH ボタンの見た目（変わったときだけ書きかえる） ----
+const staminaBox = $("tw-stamina");
+const staminaBar = $("tw-stamina-bar");
+const hud = { shown: false, value: -1, tired: null, dash: null, idle: 0 };
 
-  const air = !state.onGround;
-  p.phase += dt * (6 + 6 * state.moving) * (state.moving > 0.05 ? 1 : 0);
-  const swing = air ? 0 : Math.sin(p.phase) * 0.75 * state.moving;
-  p.legL.pivot.rotation.x = air ? -0.6 : swing;
-  p.legR.pivot.rotation.x = air ? 0.3 : -swing;
-  p.armL.pivot.rotation.x = air ? -2.4 : -swing * 0.9;
-  p.armR.pivot.rotation.x = air ? -2.4 : swing * 0.9;
-  const bob = air ? 0 : Math.abs(Math.sin(p.phase)) * 0.05 * state.moving;
-  p.body.position.y = 0.95 + bob;
-  p.head.position.y = 1.62 + bob;
-  // 足もとの丸い影：跳ぶと小さく薄く
-  const k = 1 / (1 + state.y * 0.6);
-  p.shadow.position.set(state.x, 0.08, state.z);
-  p.shadow.scale.set(1.1 * k, 1, 1.1 * k);
-  p.shadow.material.opacity = 0.38 * k;
+function updateDashButton() {
+  const on = input.dashOn && !state.tired;
+  if (hud.dash === on && hud.tired === state.tired) return;
+  hud.dash = on;
+  dashBtn.classList.toggle("on", on);
+  dashBtn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function updateHud(dt) {
+  // 満タンでしばらく走っていなければ隠す（街を見る余白を残す）
+  const full = state.stamina >= 1 && !state.dashing;
+  hud.idle = full ? hud.idle + dt : 0;
+  const show = hud.idle < 1.2;
+  if (show !== hud.shown) {
+    hud.shown = show;
+    staminaBox.classList.toggle("show", show);
+  }
+  const v = Math.round(state.stamina * 200) / 200;
+  if (v !== hud.value) {
+    hud.value = v;
+    staminaBar.style.transform = `scaleX(${v})`;
+    staminaBox.classList.toggle("low", v < 0.3);
+  }
+  if (state.tired !== hud.tired) {
+    staminaBox.classList.toggle("tired", state.tired);
+    dashBtn.classList.toggle("tired", state.tired);
+    if (state.tired) input.dashOn = false; // 切れたら一度オフ。戻ったらまた押せば走れる
+    updateDashButton();
+    hud.tired = state.tired;
+  }
 }
 
 // =========================================================
 // カメラ
 // =========================================================
 
-// キャラクターと街並みの両方が見える距離・高さ
+// キャラクターと街並みの両方が見える距離・高さ。走ると少し後ろへ引き、視野を少し広げる
 const CAM_DIST = 6.4;
+const CAM_DIST_DASH = 7.3;
 const CAM_HEIGHT = 3.4;
 const LOOK_HEIGHT = 1.55;
+const FOV_DASH = 5; // 走るときに広げる角度（控えめ）
 let camZoom = 1; // 壁よけで手前に寄せている割合（1 = 寄せていない）
+let baseFov = 55;
+let camFovAdd = 0;
+let lookY = null; // 見る高さ（ジャンプで上下にガクッと動かないよう、少し遅れて追う）
+let landDip = 0; // 着地のときに、カメラを少しだけ沈める
 const _want = { x: 0, y: 0, z: 0 };
 
 function updateCamera(dt, instant) {
-  const headY = state.y + LOOK_HEIGHT;
-  const wx = state.x + Math.sin(camYaw) * CAM_DIST;
-  const wy = state.y + CAM_HEIGHT;
-  const wz = state.z + Math.cos(camYaw) * CAM_DIST;
+  if (state.landed > 0) landDip = Math.max(landDip, 0.12 * state.landed);
+  landDip = Math.max(0, landDip - dt * 0.6);
+  const dist = CAM_DIST + (CAM_DIST_DASH - CAM_DIST) * state.dash;
+  // 見る高さ：地面にいるときはすぐ、跳んでいる間はゆっくり追う
+  const targetLook = state.y + LOOK_HEIGHT;
+  if (lookY === null || instant) lookY = targetLook;
+  else lookY += (targetLook - lookY) * Math.min(1, dt * (state.onGround ? 10 : 5));
+  const headY = lookY - landDip;
+  const wx = state.x + Math.sin(camYaw) * dist;
+  const wy = headY - LOOK_HEIGHT + CAM_HEIGHT;
+  const wz = state.z + Math.cos(camYaw) * dist;
   // 建物にめり込まないよう、頭からカメラまでの間に建物があれば手前に寄せる。
   // 寄せるときはすぐ、離すときはゆっくり（寄ったり離れたりで画面が揺れないように）
   const t = E.cameraClip(state.x, headY, state.z, wx, wy, wz);
@@ -258,6 +303,13 @@ function updateCamera(dt, instant) {
     camPos.z += (_want.z - camPos.z) * a;
   }
   camera.position.copy(camPos);
+  // 視野：走るとほんの少し広く（なめらかに）
+  const fovAdd = FOV_DASH * state.dash;
+  if (Math.abs(fovAdd - camFovAdd) > 0.01) {
+    camFovAdd += (fovAdd - camFovAdd) * Math.min(1, dt * 4);
+    camera.fov = baseFov + camFovAdd;
+    camera.updateProjectionMatrix();
+  }
   const ahead = (1 - camZoom) * 2.5;
   camera.lookAt(state.x - Math.sin(camYaw) * ahead, headY - (1 - camZoom) * 0.3, state.z - Math.cos(camYaw) * ahead);
   updateSun(state.x, state.z);
@@ -305,15 +357,16 @@ function frame(now) {
     if (input.keys.has("q")) camYaw += dt * 1.8;
     if (input.keys.has("e")) camYaw -= dt * 1.8;
     const { ix, iz } = readInput();
-    E.step(state, dt, ix, iz, input.jumpQueued);
+    E.step(state, dt, ix, iz, input.jumpQueued, input.dashOn || input.shift);
     input.jumpQueued = false;
-    animatePlayer(dt);
+    animatePlayer(player, state, dt);
     updateCamera(dt);
+    updateHud(dt);
     awnings.update(state.x, state.z, dt);
   } else {
     // タイトル画面では、空から街全体をゆっくり見回す
     titleAngle += dt * 0.1;
-    animatePlayer(dt);
+    animatePlayer(player, state, dt);
     camera.position.set(Math.sin(titleAngle) * 40, 27, Math.cos(titleAngle) * 40);
     camera.lookAt(0, 0, 0);
     updateSun(0, 0);
@@ -372,7 +425,8 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   // 縦長の画面では少し広めに見せる
-  camera.fov = w < h ? 62 : 50;
+  baseFov = w < h ? 62 : 50;
+  camera.fov = baseFov + camFovAdd;
   camera.updateProjectionMatrix();
 }
 
@@ -382,7 +436,7 @@ function startGame() {
   camYaw = 0;
   updateCamera(0, true);
   const hint = $("tw-hint");
-  hint.textContent = isTouch ? "左下で歩く・右下でジャンプ・右側をなぞって見回す" : "WASDで歩く・Spaceでジャンプ・Q/Eで見回す";
+  hint.textContent = isTouch ? "左下で歩く・DASHで走る・右側をなぞって見回す" : "WASDで歩く・Shiftで走る・Spaceでジャンプ";
   hint.classList.add("show");
   setTimeout(() => hint.classList.remove("show"), 4000);
 }
