@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#5ec8ff">
+  <meta name="description" content="同じ色のぽよをタップして消す、カラフルなパズル。ロケット・ボム・レインボーで、まとめて吹き飛ばそう。">
+  <title>ぽよぽよブラスト｜ちょっと暇つぶし。</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫧</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="pb-body">
+  <div class="pb-app" id="pb-app" data-screen="map">
+    <!-- 背景：空と、ふわふわ上がる泡 -->
+    <div class="pb-bg" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+
+    <!-- ===== ステージ選択（マップ） ===== -->
+    <section class="pb-map" id="pb-map" aria-label="ステージ選択">
+      <header class="pb-topbar">
+        <a class="pb-chip" href="../../">‹ ちょっと暇つぶし。</a>
+        <button class="pb-icon-btn pb-sound-btn" type="button" aria-label="音のオン・オフ">🔊</button>
+      </header>
+      <h1 class="pb-logo"><span class="pb-logo-1">ぽよぽよ</span><span class="pb-logo-2">ブラスト</span></h1>
+      <p class="pb-total" id="pb-total">★ 0 / 30</p>
+      <div class="pb-path-scroll" id="pb-path-scroll">
+        <div class="pb-path" id="pb-path">
+          <svg class="pb-path-line" id="pb-path-line" aria-hidden="true"></svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ゲーム ===== -->
+    <section class="pb-game" id="pb-game" aria-label="パズル">
+      <header class="pb-hud">
+        <div class="pb-moves" aria-live="polite">
+          <span class="pb-moves-label">手数</span>
+          <b class="pb-moves-num" id="pb-moves">20</b>
+        </div>
+        <div class="pb-goals" id="pb-goals" aria-label="目標"></div>
+        <button class="pb-icon-btn pb-pause-btn" id="pb-pause" type="button" aria-label="一時停止">
+          <span></span><span></span>
+        </button>
+      </header>
+      <div class="pb-scorebar" aria-hidden="true">
+        <div class="pb-scorefill" id="pb-scorefill"></div>
+        <i class="pb-scorestar" id="pb-star1">★</i>
+        <i class="pb-scorestar" id="pb-star2">★</i>
+        <i class="pb-scorestar" id="pb-star3">★</i>
+        <span class="pb-scoretext" id="pb-score">0</span>
+      </div>
+      <div class="pb-board-wrap" id="pb-board-wrap">
+        <canvas class="pb-canvas" id="pb-canvas" aria-label="パズルの盤面"></canvas>
+      </div>
+      <p class="pb-level-label" id="pb-level-label">ステージ 1</p>
+    </section>
+
+    <!-- ===== ステージ開始 ===== -->
+    <div class="pb-modal" id="pb-start" role="dialog" aria-modal="true" aria-labelledby="pb-start-title">
+      <div class="pb-card">
+        <button class="pb-close" type="button" data-close aria-label="閉じる">×</button>
+        <h2 class="pb-card-title" id="pb-start-title">ステージ 1</h2>
+        <p class="pb-card-sub">目標</p>
+        <div class="pb-goal-list" id="pb-start-goals"></div>
+        <p class="pb-start-moves">手数 <b id="pb-start-moves">20</b></p>
+        <p class="pb-tip" id="pb-start-tip"></p>
+        <div class="pb-start-stars" id="pb-start-stars"></div>
+        <button class="pb-btn pb-btn-go" id="pb-start-go" type="button">スタート</button>
+      </div>
+    </div>
+
+    <!-- ===== クリア ===== -->
+    <div class="pb-modal" id="pb-win" role="dialog" aria-modal="true" aria-labelledby="pb-win-title">
+      <div class="pb-card pb-card-win">
+        <div class="pb-ribbon" id="pb-win-title">ステージクリア！</div>
+        <div class="pb-stars" id="pb-win-stars">
+          <i class="pb-star" data-n="1">★</i><i class="pb-star pb-star-mid" data-n="2">★</i><i class="pb-star" data-n="3">★</i>
+        </div>
+        <p class="pb-win-score"><span>SCORE</span><b id="pb-win-score">0</b></p>
+        <p class="pb-win-best" id="pb-win-best"></p>
+        <button class="pb-btn pb-btn-go" id="pb-win-next" type="button">つぎへ ▶</button>
+        <div class="pb-btn-row">
+          <button class="pb-btn pb-btn-sub" id="pb-win-retry" type="button">もう一度</button>
+          <button class="pb-btn pb-btn-sub" id="pb-win-map" type="button">マップ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 手数切れ ===== -->
+    <div class="pb-modal" id="pb-lose" role="dialog" aria-modal="true" aria-labelledby="pb-lose-title">
+      <div class="pb-card">
+        <h2 class="pb-card-title" id="pb-lose-title">手数がなくなった…</h2>
+        <p class="pb-card-sub">のこりの目標</p>
+        <div class="pb-goal-list" id="pb-lose-goals"></div>
+        <button class="pb-btn pb-btn-plus" id="pb-lose-continue" type="button">＋5手でつづける <small>（1回だけ）</small></button>
+        <button class="pb-btn pb-btn-go" id="pb-lose-retry" type="button">もう一度</button>
+        <button class="pb-btn pb-btn-sub pb-btn-wide" id="pb-lose-map" type="button">マップへ</button>
+      </div>
+    </div>
+
+    <!-- ===== 一時停止 ===== -->
+    <div class="pb-modal" id="pb-pausemenu" role="dialog" aria-modal="true" aria-labelledby="pb-pause-title">
+      <div class="pb-card">
+        <h2 class="pb-card-title" id="pb-pause-title">ひとやすみ</h2>
+        <button class="pb-btn pb-btn-go" id="pb-resume" type="button">つづける</button>
+        <button class="pb-btn pb-btn-sub pb-btn-wide" id="pb-restart" type="button">やりなおす</button>
+        <button class="pb-btn pb-btn-sub pb-btn-wide" id="pb-tomap" type="button">マップへ</button>
+        <button class="pb-btn pb-btn-sub pb-btn-wide pb-sound-btn" type="button">🔊 音：オン</button>
+      </div>
+    </div>
+
+    <!-- 画面切りかえの丸いワイプ -->
+    <div class="pb-wipe" id="pb-wipe" aria-hidden="true"></div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="levels.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

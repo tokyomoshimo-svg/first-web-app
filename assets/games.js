@@ -56,4 +56,13 @@ const GAMES = [
     color: "#3a86ff",
     href: "games/tokyo-walk/",
   },
+  {
+    id: "blast",
+    title: "ぽよぽよブラスト",
+    emoji: "🫧",
+    description: "同じ色のぽよをタップして消すパズル。ロケット・ボム・レインボーで、まとめて吹き飛ばせ。全10ステージ。",
+    time: "1ステージ約2分",
+    color: "#7b5cff",
+    href: "games/blast/",
+  },
 ];
